@@ -28,7 +28,7 @@ The current codebase contains the first distributed-search slices:
 - etcd and in-memory metadata manager implementations with snapshots and watches.
 - Document event validation, in-memory event bus, JetStream publication boundary, and replay applier.
 
-Search is eventually consistent. A coordinator document write is accepted after the document event is published; tablets apply events through replay.
+Search is eventually consistent. A coordinator document write is accepted after the document event is published. The replay applier now validates shard identity, applies events to tablets, acknowledges messages after successful apply, and persists checkpoints; the full search-node JetStream consumer loop is still a later milestone.
 
 ## Development
 
