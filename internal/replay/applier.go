@@ -107,8 +107,11 @@ func (a *Applier) Apply(ctx context.Context, evt events.DocumentEvent) error {
 		return err
 	}
 
+	if err := a.putCheckpoint(ctx, evt, checkpoint.Revision); err != nil {
+		return err
+	}
 	a.state.record(evt)
-	return a.putCheckpoint(ctx, evt, checkpoint.Revision)
+	return nil
 }
 
 // ApplyMessage applies a message and acknowledges it only after success.

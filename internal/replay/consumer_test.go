@@ -14,13 +14,14 @@ func TestConsumerRunOnceAppliesFetchedMessages(t *testing.T) {
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, nil)
 	source := &fakeMessageSource{messages: []Message{
 		&fakeMessage{sequence: 1, event: events.DocumentEvent{
-			ID:            "evt-1",
-			SchemaVersion: events.CurrentSchemaVersion,
-			Operation:     events.OperationUpsert,
-			IndexName:     "books",
-			ShardID:       0,
-			DocumentID:    "doc-1",
-			Fields:        map[string]any{"title": "Bleve"},
+			ID:              "evt-1",
+			SchemaVersion:   events.CurrentSchemaVersion,
+			Operation:       events.OperationUpsert,
+			IndexName:       "books",
+			ShardID:         0,
+			DocumentID:      "doc-1",
+			DocumentVersion: 1,
+			Fields:          map[string]any{"title": "Bleve"},
 		}},
 	}}
 	consumer := NewConsumer(source, applier, ConsumerConfig{BatchSize: 10})

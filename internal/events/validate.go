@@ -25,8 +25,8 @@ func Validate(evt DocumentEvent) error {
 	if evt.Sequence < 0 {
 		return fmt.Errorf("sequence must be non-negative")
 	}
-	if evt.DocumentVersion < 0 {
-		return fmt.Errorf("document version must be non-negative")
+	if evt.DocumentVersion <= 0 {
+		return fmt.Errorf("document version must be positive")
 	}
 
 	switch evt.Operation {

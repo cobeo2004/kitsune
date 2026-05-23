@@ -14,14 +14,15 @@ func TestMemoryBusPublishesAndFetchesEvent(t *testing.T) {
 
 	bus := NewMemoryBus()
 	evt := DocumentEvent{
-		ID:            "evt-1",
-		SchemaVersion: CurrentSchemaVersion,
-		Operation:     OperationUpsert,
-		IndexName:     "books",
-		ShardID:       0,
-		DocumentID:    "doc-1",
-		Sequence:      1,
-		Fields:        map[string]any{"title": "Bleve"},
+		ID:              "evt-1",
+		SchemaVersion:   CurrentSchemaVersion,
+		Operation:       OperationUpsert,
+		IndexName:       "books",
+		ShardID:         0,
+		DocumentID:      "doc-1",
+		DocumentVersion: 1,
+		Sequence:        1,
+		Fields:          map[string]any{"title": "Bleve"},
 	}
 	if err := bus.Publish(context.Background(), evt); err != nil {
 		t.Fatalf("publish: %v", err)
@@ -42,14 +43,15 @@ func TestNATSBusPublishesJSONEventToShardSubject(t *testing.T) {
 	pub := &fakePublisher{}
 	bus := NewNATSBus(pub)
 	evt := DocumentEvent{
-		ID:            "evt-1",
-		SchemaVersion: CurrentSchemaVersion,
-		Operation:     OperationUpsert,
-		IndexName:     "books",
-		ShardID:       2,
-		DocumentID:    "doc-1",
-		Sequence:      1,
-		Fields:        map[string]any{"title": "Bleve"},
+		ID:              "evt-1",
+		SchemaVersion:   CurrentSchemaVersion,
+		Operation:       OperationUpsert,
+		IndexName:       "books",
+		ShardID:         2,
+		DocumentID:      "doc-1",
+		DocumentVersion: 1,
+		Sequence:        1,
+		Fields:          map[string]any{"title": "Bleve"},
 	}
 
 	if err := bus.Publish(context.Background(), evt); err != nil {
@@ -90,14 +92,15 @@ func TestNATSBusReturnsPublishError(t *testing.T) {
 	pub := &fakePublisher{err: errors.New("nats down")}
 	bus := NewNATSBus(pub)
 	err := bus.Publish(context.Background(), DocumentEvent{
-		ID:            "evt-1",
-		SchemaVersion: CurrentSchemaVersion,
-		Operation:     OperationUpsert,
-		IndexName:     "books",
-		ShardID:       0,
-		DocumentID:    "doc-1",
-		Sequence:      1,
-		Fields:        map[string]any{"title": "Bleve"},
+		ID:              "evt-1",
+		SchemaVersion:   CurrentSchemaVersion,
+		Operation:       OperationUpsert,
+		IndexName:       "books",
+		ShardID:         0,
+		DocumentID:      "doc-1",
+		DocumentVersion: 1,
+		Sequence:        1,
+		Fields:          map[string]any{"title": "Bleve"},
 	})
 	if err == nil {
 		t.Fatal("expected publish error")
@@ -109,14 +112,15 @@ func TestNATSBusRejectsMissingPublisher(t *testing.T) {
 
 	bus := NewNATSBus(nil)
 	err := bus.Publish(context.Background(), DocumentEvent{
-		ID:            "evt-1",
-		SchemaVersion: CurrentSchemaVersion,
-		Operation:     OperationUpsert,
-		IndexName:     "books",
-		ShardID:       0,
-		DocumentID:    "doc-1",
-		Sequence:      1,
-		Fields:        map[string]any{"title": "Bleve"},
+		ID:              "evt-1",
+		SchemaVersion:   CurrentSchemaVersion,
+		Operation:       OperationUpsert,
+		IndexName:       "books",
+		ShardID:         0,
+		DocumentID:      "doc-1",
+		DocumentVersion: 1,
+		Sequence:        1,
+		Fields:          map[string]any{"title": "Bleve"},
 	})
 	if err == nil {
 		t.Fatal("expected missing publisher to fail")

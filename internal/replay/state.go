@@ -3,28 +3,36 @@ package replay
 import "github.com/cobeo2004/kitsune/internal/events"
 
 type documentState struct {
-	lastSequence int64
+	lastDocumentVersion int64
 }
 
 type stateTracker struct {
-	seen map[string]documentState
+	seen map[documentKey]documentState
+}
+
+type documentKey struct {
+	indexName  string
+	shardID    int
+	documentID string
 }
 
 func newStateTracker() *stateTracker {
-	return &stateTracker{seen: make(map[string]documentState)}
+	return &stateTracker{seen: make(map[documentKey]documentState)}
 }
 
 func (s *stateTracker) stale(evt events.DocumentEvent) bool {
-	if evt.Sequence <= 0 {
-		return false
-	}
-	current := s.seen[evt.DocumentID]
-	return evt.Sequence <= current.lastSequence
+	current := s.seen[keyForEvent(evt)]
+	return evt.DocumentVersion <= current.lastDocumentVersion
 }
 
 func (s *stateTracker) record(evt events.DocumentEvent) {
-	if evt.Sequence <= 0 {
-		return
+	s.seen[keyForEvent(evt)] = documentState{lastDocumentVersion: evt.DocumentVersion}
+}
+
+func keyForEvent(evt events.DocumentEvent) documentKey {
+	return documentKey{
+		indexName:  evt.IndexName,
+		shardID:    evt.ShardID,
+		documentID: evt.DocumentID,
 	}
-	s.seen[evt.DocumentID] = documentState{lastSequence: evt.Sequence}
 }
