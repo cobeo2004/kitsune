@@ -15,12 +15,12 @@ func TestApplierAppliesUpsertEvent(t *testing.T) {
 	applier := NewApplier(tb)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:        "evt-1",
-		Operation: events.OperationUpsert,
-		IndexName: "books",
-		ShardID:   0,
+		ID:         "evt-1",
+		Operation:  events.OperationUpsert,
+		IndexName:  "books",
+		ShardID:    0,
 		DocumentID: "doc-1",
-		Fields:    map[string]any{"title": "Bleve"},
+		Fields:     map[string]any{"title": "Bleve"},
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)

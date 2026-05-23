@@ -14,14 +14,14 @@ const (
 
 // DocumentEvent is the durable event envelope for one document mutation.
 type DocumentEvent struct {
-	ID             string         `json:"id"`
-	Operation      Operation      `json:"operation"`
-	IndexName      string         `json:"indexName"`
-	ShardID        int            `json:"shardId"`
-	DocumentID     string         `json:"documentId"`
+	ID              string         `json:"id"`
+	Operation       Operation      `json:"operation"`
+	IndexName       string         `json:"indexName"`
+	ShardID         int            `json:"shardId"`
+	DocumentID      string         `json:"documentId"`
 	DocumentVersion int64          `json:"documentVersion"`
-	Fields         map[string]any `json:"fields,omitempty"`
-	MappingVersion int            `json:"mappingVersion"`
-	Sequence       int64          `json:"sequence"`
-	Timestamp      time.Time      `json:"timestamp"`
+	Fields          map[string]any `json:"fields,omitempty"`
+	MappingVersion  int            `json:"mappingVersion"`
+	Sequence        int64          `json:"sequence"`
+	Timestamp       time.Time      `json:"timestamp"`
 }
