@@ -36,6 +36,7 @@ type CheckpointStore interface {
 // Message is an event message that is acknowledged after successful apply.
 type Message interface {
 	Event() events.DocumentEvent
+	Sequence() int64
 	Ack(ctx context.Context) error
 }
 
@@ -103,7 +104,11 @@ func (a *Applier) Apply(ctx context.Context, evt events.DocumentEvent) error {
 
 // ApplyMessage applies a message and acknowledges it only after success.
 func (a *Applier) ApplyMessage(ctx context.Context, msg Message) error {
-	if err := a.Apply(ctx, msg.Event()); err != nil {
+	evt := msg.Event()
+	if sequence := msg.Sequence(); sequence > 0 {
+		evt.Sequence = sequence
+	}
+	if err := a.Apply(ctx, evt); err != nil {
 		return err
 	}
 	if err := msg.Ack(ctx); err != nil {
