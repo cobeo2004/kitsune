@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cobeo2004/kitsune/internal/metadata"
 )
@@ -30,10 +31,23 @@ func (r StaticRoutes) routesForIndex(index string) []Route {
 	return r[index]
 }
 
-func (r StaticRoutes) selectedRoutes(index string, shardCount int) ([]Route, bool) {
+func (r StaticRoutes) selectedRoutes(index string, shardCount int) ([]Route, error) {
+	groups, err := r.readyRoutesByShard(index, shardCount)
+	if err != nil {
+		return nil, err
+	}
+
+	selected := make([]Route, 0, len(groups))
+	for _, routes := range groups {
+		selected = append(selected, routes[0])
+	}
+	return selected, nil
+}
+
+func (r StaticRoutes) readyRoutesByShard(index string, shardCount int) ([][]Route, error) {
 	routes := r.routesForIndex(index)
 	if shardCount <= 0 || len(routes) == 0 {
-		return nil, false
+		return nil, fmt.Errorf("no healthy replica available for %s shard 0", index)
 	}
 
 	byShard := make(map[int][]ReplicaCandidate, shardCount)
@@ -44,19 +58,27 @@ func (r StaticRoutes) selectedRoutes(index string, shardCount int) ([]Route, boo
 		byShard[route.ShardID] = append(byShard[route.ShardID], route.replicaCandidate(index))
 	}
 
-	selected := make([]Route, 0, shardCount)
+	groups := make([][]Route, 0, shardCount)
 	for shardID := 0; shardID < shardCount; shardID++ {
 		candidates, ok := byShard[shardID]
 		if !ok {
-			return nil, false
+			return nil, fmt.Errorf("no healthy replica available for %s shard %d", index, shardID)
 		}
-		candidate, err := SelectReplica(candidates)
-		if err != nil {
-			return nil, false
+
+		ready := make([]Route, 0, len(candidates))
+		for _, candidate := range candidates {
+			if candidate.State == ReplicaReady {
+				ready = append(ready, routeFromCandidate(candidate))
+			}
 		}
-		selected = append(selected, routeFromCandidate(candidate))
+		if len(ready) == 0 {
+			if _, err := SelectReplica(candidates); err != nil {
+				return nil, err
+			}
+		}
+		groups = append(groups, ready)
 	}
-	return selected, true
+	return groups, nil
 }
 
 func (r Route) replicaCandidate(indexName string) ReplicaCandidate {
@@ -94,6 +116,8 @@ func routesFromMetadata(replicas []metadata.ShardReplicaRecord, statuses []metad
 		}
 		if state, ok := states[routeAssignmentKey(replica.IndexName, replica.ShardID, replica.ReplicaID, replica.NodeID)]; ok {
 			route.State = state
+		} else {
+			route.State = ReplicaUnknown
 		}
 		routes[replica.IndexName] = append(routes[replica.IndexName], route)
 	}

@@ -4,6 +4,8 @@ package coordinator
 type ReplicaState string
 
 const (
+	// ReplicaUnknown has not reported enough health data to serve search.
+	ReplicaUnknown ReplicaState = "unknown"
 	// ReplicaReady can serve search requests.
 	ReplicaReady ReplicaState = "ready"
 	// ReplicaFailed must not serve search requests.

@@ -364,6 +364,9 @@ func TestSearchRoutesFromMetadataSnapshot(t *testing.T) {
 	if err := manager.PutShardReplica(ctx, metadata.ShardReplicaRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"}, 0); err != nil {
 		t.Fatalf("put shard replica: %v", err)
 	}
+	if err := manager.PutTabletStatus(ctx, metadata.TabletStatusRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaReady)}, 0); err != nil {
+		t.Fatalf("put tablet status: %v", err)
+	}
 
 	client := &fakeShardClient{result: ShardSearchResult{Total: 1, Hits: []SearchHit{{DocumentID: "doc-1", Score: 2}}}}
 	srv := NewServer(ServerConfig{
@@ -456,6 +459,9 @@ func TestMetadataWatchRefreshesRouteCache(t *testing.T) {
 	if err := manager.PutShardReplica(ctx, metadata.ShardReplicaRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"}, 0); err != nil {
 		t.Fatalf("put shard replica: %v", err)
 	}
+	if err := manager.PutTabletStatus(ctx, metadata.TabletStatusRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaReady)}, 0); err != nil {
+		t.Fatalf("put tablet status: %v", err)
+	}
 
 	eventually(t, func() bool {
 		req := httptest.NewRequest(http.MethodGet, "/v1/indexes/books/search?q=bleve&limit=10", nil)
@@ -483,6 +489,9 @@ func TestMetadataWatchReloadsAfterClosedWatch(t *testing.T) {
 				},
 				ShardReplicas: []metadata.ShardReplicaRecord{
 					{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"},
+				},
+				TabletStatuses: []metadata.TabletStatusRecord{
+					{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaReady)},
 				},
 			},
 		},
@@ -522,6 +531,9 @@ func TestMetadataWatchRetriesAfterLoadFailure(t *testing.T) {
 				},
 				ShardReplicas: []metadata.ShardReplicaRecord{
 					{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"},
+				},
+				TabletStatuses: []metadata.TabletStatusRecord{
+					{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaReady)},
 				},
 			},
 		},
@@ -743,6 +755,37 @@ func TestSearchSkipsFailedReplicaWhenReadyReplicaExists(t *testing.T) {
 	}
 }
 
+func TestSearchFallsBackWhenReadyReplicaCallFails(t *testing.T) {
+	t.Parallel()
+
+	failingReplica := &fakeShardClient{err: errors.New("replica unavailable")}
+	readyReplica := &fakeShardClient{result: ShardSearchResult{Total: 1, Hits: []SearchHit{{DocumentID: "doc-1", Score: 2}}}}
+	srv := NewServer(ServerConfig{
+		EventBus: events.NewMemoryBus(),
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: ReplicaReady, Client: failingReplica},
+				{ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b", State: ReplicaReady, Client: readyReplica},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 2)
+	req := httptest.NewRequest(http.MethodGet, "/v1/indexes/books/search?q=bleve&limit=10", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if failingReplica.calls != 1 {
+		t.Fatalf("failing replica calls = %d, want 1", failingReplica.calls)
+	}
+	if readyReplica.calls != 1 {
+		t.Fatalf("ready replica calls = %d, want 1", readyReplica.calls)
+	}
+}
+
 func TestSearchRejectsMissingShardReplica(t *testing.T) {
 	t.Parallel()
 
@@ -757,6 +800,29 @@ func TestSearchRejectsMissingShardReplica(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestSearchReportsShardWhenNoHealthyReplicaAvailable(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{
+		EventBus: events.NewMemoryBus(),
+		Routes: StaticRoutes{
+			"books": {{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: ReplicaFailed, Client: &fakeShardClient{}}},
+		},
+	})
+	createBooksIndex(t, srv, 1, 1)
+	req := httptest.NewRequest(http.MethodGet, "/v1/indexes/books/search?q=bleve&limit=10", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if !strings.Contains(rec.Body.String(), "books shard 0") {
+		t.Fatalf("body = %q, want shard context", rec.Body.String())
 	}
 }
 

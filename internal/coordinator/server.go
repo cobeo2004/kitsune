@@ -48,6 +48,7 @@ type Server struct {
 	metadataManager  metadata.KSMetadataManager
 	eventBus         events.Bus
 	indexes          map[string]IndexInfo
+	tabletStatuses   map[assignmentKey]ReplicaState
 }
 
 // NewServer creates a KSCoordinator REST server.
@@ -71,6 +72,7 @@ func NewServer(cfg ServerConfig) *Server {
 		metadataManager:  cfg.MetadataManager,
 		eventBus:         cfg.EventBus,
 		indexes:          make(map[string]IndexInfo),
+		tabletStatuses:   make(map[assignmentKey]ReplicaState),
 	}
 	for _, idx := range cfg.StaticConfig.Indexes {
 		s.indexes[idx.Name] = IndexInfo{
@@ -171,11 +173,13 @@ func (s *Server) applyMetadataSnapshot(snapshot metadata.Snapshot) {
 		}
 	}
 
+	tabletStatuses := statesFromMetadata(snapshot.TabletStatuses)
 	routes := routesFromMetadata(snapshot.ShardReplicas, snapshot.TabletStatuses, s.routeClients)
 
 	s.mu.Lock()
 	s.indexes = indexes
 	s.routes = routes
+	s.tabletStatuses = tabletStatuses
 	s.staticConfigured = true
 	s.mu.Unlock()
 }
@@ -210,13 +214,27 @@ func (s *Server) applyMetadataEvent(event metadata.WatchEvent) {
 			return
 		}
 		if route, ok := routeForReplica(s.routeClients, *event.ShardReplica); ok {
+			key := routeAssignmentKey(event.ShardReplica.IndexName, event.ShardReplica.ShardID, event.ShardReplica.ReplicaID, event.ShardReplica.NodeID)
+			if state, ok := s.tabletStatuses[key]; ok {
+				route.State = state
+			} else {
+				route.State = ReplicaUnknown
+			}
 			s.routes = upsertRoute(s.routes, event.ShardReplica.IndexName, route)
 		}
 	case metadata.EventKindTabletStatus:
 		if event.TabletStatus == nil {
 			return
 		}
-		s.routes = updateRouteState(s.routes, *event.TabletStatus)
+		status := *event.TabletStatus
+		key := routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID, status.NodeID)
+		if event.Deleted {
+			delete(s.tabletStatuses, key)
+			status.State = string(ReplicaUnknown)
+		} else {
+			s.tabletStatuses[key] = ReplicaState(status.State)
+		}
+		s.routes = updateRouteState(s.routes, status)
 	}
 }
 
@@ -373,7 +391,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, routes, ok := s.indexRouteSnapshot(index)
+	_, routeGroups, ok, routeErr := s.indexSearchRouteSnapshot(index)
 	if !ok {
 		http.Error(w, fmt.Sprintf("index %q not found", index), http.StatusNotFound)
 		return
@@ -396,16 +414,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(routes) == 0 {
-		http.Error(w, fmt.Sprintf("index %q has no healthy replica for every shard", index), http.StatusServiceUnavailable)
+	if routeErr != nil {
+		http.Error(w, routeErr.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
-	results := make([]ShardSearchResult, 0, len(routes))
-	for _, route := range routes {
-		result, err := route.Client.Search(r.Context(), query, shardLimit, 0)
+	results := make([]ShardSearchResult, 0, len(routeGroups))
+	for _, routes := range routeGroups {
+		result, err := searchShardWithFallback(r.Context(), index, routes, query, shardLimit)
 		if err != nil {
-			http.Error(w, "search shard route: "+err.Error(), http.StatusBadGateway)
+			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 		results = append(results, result)
@@ -558,11 +576,42 @@ func (s *Server) indexRouteSnapshot(index string) (IndexInfo, []Route, bool) {
 	if !ok {
 		return IndexInfo{}, nil, false
 	}
-	routes, ok := s.routes.selectedRoutes(index, info.ShardCount)
-	if !ok {
+	routes, err := s.routes.selectedRoutes(index, info.ShardCount)
+	if err != nil {
 		return info, nil, true
 	}
 	return info, routes, true
+}
+
+func (s *Server) indexSearchRouteSnapshot(index string) (IndexInfo, [][]Route, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	info, ok := s.indexes[index]
+	if !ok {
+		return IndexInfo{}, nil, false, nil
+	}
+	routes, err := s.routes.readyRoutesByShard(index, info.ShardCount)
+	if err != nil {
+		return info, nil, true, err
+	}
+	return info, routes, true, nil
+}
+
+func searchShardWithFallback(ctx context.Context, index string, routes []Route, query string, limit int) (ShardSearchResult, error) {
+	var lastErr error
+	for _, route := range routes {
+		result, err := route.Client.Search(ctx, query, limit, 0)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+	}
+	if len(routes) == 0 {
+		return ShardSearchResult{}, fmt.Errorf("no healthy replica available for %s shard 0", index)
+	}
+	first := routes[0]
+	return ShardSearchResult{}, fmt.Errorf("search %s shard %d: all ready replicas failed: %w", index, first.ShardID, lastErr)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
