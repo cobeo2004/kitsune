@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"net/http"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cobeo2004/kitsune/internal/events"
 	"github.com/cobeo2004/kitsune/internal/metadata"
 )
 
@@ -32,6 +34,7 @@ type ServerConfig struct {
 	Routes           StaticRoutes
 	StaticConfig     StaticConfig
 	MetadataManager  metadata.KSMetadataManager
+	EventBus         events.Bus
 }
 
 // Server is the REST-first KSCoordinator HTTP surface.
@@ -43,6 +46,7 @@ type Server struct {
 	routeClients     StaticRoutes
 	staticConfigured bool
 	metadataManager  metadata.KSMetadataManager
+	eventBus         events.Bus
 	indexes          map[string]IndexInfo
 }
 
@@ -65,6 +69,7 @@ func NewServer(cfg ServerConfig) *Server {
 		routeClients:     cfg.Routes,
 		staticConfigured: len(cfg.StaticConfig.Indexes) > 0,
 		metadataManager:  cfg.MetadataManager,
+		eventBus:         cfg.EventBus,
 		indexes:          make(map[string]IndexInfo),
 	}
 	for _, idx := range cfg.StaticConfig.Indexes {
@@ -284,20 +289,21 @@ func (s *Server) handleIndexes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/documents/") {
-		index, _, ok := documentRefFromPath(r.URL.Path)
+		index, documentID, ok := documentRefFromPath(r.URL.Path)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		s.handleUpsertDocument(w, r, index)
+		s.handleUpsertDocument(w, r, index, documentID)
 		return
 	}
 
 	http.NotFound(w, r)
 }
 
-func (s *Server) handleUpsertDocument(w http.ResponseWriter, r *http.Request, index string) {
-	if !s.hasIndex(index) {
+func (s *Server) handleUpsertDocument(w http.ResponseWriter, r *http.Request, index, documentID string) {
+	info, ok := s.index(index)
+	if !ok {
 		http.Error(w, fmt.Sprintf("index %q not found", index), http.StatusNotFound)
 		return
 	}
@@ -317,6 +323,22 @@ func (s *Server) handleUpsertDocument(w http.ResponseWriter, r *http.Request, in
 	if payload == nil {
 		http.Error(w, "invalid document payload", http.StatusBadRequest)
 		return
+	}
+	if s.eventBus != nil {
+		fields := documentFields(payload)
+		evt := newDocumentEvent(info, documentID, fields)
+		if err := s.eventBus.Publish(r.Context(), evt); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				http.Error(w, err.Error(), http.StatusRequestTimeout)
+				return
+			}
+			if err := events.Validate(evt); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			http.Error(w, "publish document event: "+err.Error(), http.StatusBadGateway)
+			return
+		}
 	}
 
 	w.WriteHeader(http.StatusAccepted)
@@ -394,6 +416,40 @@ func documentRefFromPath(path string) (string, string, bool) {
 		return "", "", false
 	}
 	return parts[0], parts[2], true
+}
+
+func documentFields(payload map[string]any) map[string]any {
+	fields, ok := payload["fields"].(map[string]any)
+	if ok {
+		return fields
+	}
+	return payload
+}
+
+func newDocumentEvent(index IndexInfo, documentID string, fields map[string]any) events.DocumentEvent {
+	shardID := shardForDocument(documentID, index.ShardCount)
+	now := time.Now().UTC()
+	return events.DocumentEvent{
+		ID:              fmt.Sprintf("%s/%d/%s/%d", index.Name, shardID, documentID, now.UnixNano()),
+		Operation:       events.OperationUpsert,
+		IndexName:       index.Name,
+		ShardID:         shardID,
+		DocumentID:      documentID,
+		DocumentVersion: now.UnixNano(),
+		Fields:          cloneMapping(fields),
+		MappingVersion:  index.MappingVersion,
+		Sequence:        now.UnixNano(),
+		Timestamp:       now,
+	}
+}
+
+func shardForDocument(documentID string, shardCount int) int {
+	if shardCount <= 1 {
+		return 0
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(documentID))
+	return int(h.Sum32() % uint32(shardCount))
 }
 
 func sameIndexDefinition(a, b IndexInfo) bool {

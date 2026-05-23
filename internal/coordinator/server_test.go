@@ -15,6 +15,7 @@ import (
 	"time"
 
 	searchnodev1 "github.com/cobeo2004/kitsune/api/searchnode/v1"
+	"github.com/cobeo2004/kitsune/internal/events"
 	"github.com/cobeo2004/kitsune/internal/metadata"
 	"github.com/cobeo2004/kitsune/internal/searchnode"
 	"github.com/cobeo2004/kitsune/internal/tablet"
@@ -124,6 +125,51 @@ func TestUpsertAcceptsExistingIndex(t *testing.T) {
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+}
+
+func TestUpsertPublishesDocumentEvent(t *testing.T) {
+	t.Parallel()
+
+	bus := events.NewMemoryBus()
+	srv := NewServer(ServerConfig{EventBus: bus})
+	createBooksIndex(t, srv, 2, 1)
+	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{"title":"Bleve"}}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+	got := bus.Events()
+	if len(got) != 1 {
+		t.Fatalf("events len = %d, want 1", len(got))
+	}
+	evt := got[0]
+	if evt.IndexName != "books" || evt.DocumentID != "doc-1" {
+		t.Fatalf("event identity = %#v", evt)
+	}
+	if evt.MappingVersion != 0 {
+		t.Fatalf("mapping version = %d, want 0", evt.MappingVersion)
+	}
+	if evt.Fields["title"] != "Bleve" {
+		t.Fatalf("fields = %#v", evt.Fields)
+	}
+}
+
+func TestUpsertFailsWhenEventPublishFails(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{EventBus: failingEventBus{}})
+	createBooksIndex(t, srv, 1, 1)
+	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{"title":"Bleve"}}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadGateway, rec.Body.String())
 	}
 }
 
@@ -813,4 +859,10 @@ func closedWatch() <-chan metadata.WatchEvent {
 	events := make(chan metadata.WatchEvent)
 	close(events)
 	return events
+}
+
+type failingEventBus struct{}
+
+func (failingEventBus) Publish(context.Context, events.DocumentEvent) error {
+	return errors.New("publish failed")
 }
