@@ -22,9 +22,15 @@ type ShardAssignment struct {
 	NodeID    string
 }
 
+// NodeConfig describes one search node available to static assignments.
+type NodeConfig struct {
+	NodeID string
+}
+
 // StaticConfig describes logical indexes and static shard replica assignments.
 type StaticConfig struct {
 	Indexes     []IndexConfig
+	Nodes       []NodeConfig
 	Assignments []ShardAssignment
 }
 
@@ -50,11 +56,23 @@ func ValidateStaticConfig(cfg StaticConfig) error {
 		indexes[idx.Name] = idx
 	}
 
+	nodes := make(map[string]struct{}, len(cfg.Nodes))
+	for _, node := range cfg.Nodes {
+		if !isStaticIDSegment(node.NodeID) {
+			return fmt.Errorf("node ID must be a single path segment")
+		}
+		if _, exists := nodes[node.NodeID]; exists {
+			return fmt.Errorf("node %q is duplicated", node.NodeID)
+		}
+		nodes[node.NodeID] = struct{}{}
+	}
+
 	type shardKey struct {
 		indexName string
 		shardID   int
 	}
 	assignments := make(map[shardKey]map[string]struct{})
+	assignmentNodes := make(map[shardKey]map[string]struct{})
 	for _, assignment := range cfg.Assignments {
 		idx, ok := indexes[assignment.IndexName]
 		if !ok {
@@ -82,10 +100,16 @@ func ValidateStaticConfig(cfg StaticConfig) error {
 			replicas = make(map[string]struct{})
 			assignments[key] = replicas
 		}
+		nodeSet, ok := assignmentNodes[key]
+		if !ok {
+			nodeSet = make(map[string]struct{})
+			assignmentNodes[key] = nodeSet
+		}
 		if _, exists := replicas[assignment.ReplicaID]; exists {
 			return fmt.Errorf("index %q shard %d replica %q is duplicated", assignment.IndexName, assignment.ShardID, assignment.ReplicaID)
 		}
 		replicas[assignment.ReplicaID] = struct{}{}
+		nodeSet[assignment.NodeID] = struct{}{}
 	}
 
 	for _, idx := range cfg.Indexes {
@@ -93,6 +117,9 @@ func ValidateStaticConfig(cfg StaticConfig) error {
 			replicas := assignments[shardKey{indexName: idx.Name, shardID: shardID}]
 			if len(replicas) != idx.ReplicationFactor {
 				return fmt.Errorf("index %q shard %d has %d replicas, want %d", idx.Name, shardID, len(replicas), idx.ReplicationFactor)
+			}
+			if len(nodes) >= idx.ReplicationFactor && len(assignmentNodes[shardKey{indexName: idx.Name, shardID: shardID}]) < idx.ReplicationFactor {
+				return fmt.Errorf("index %q shard %d assigns avoidable same-node replicas", idx.Name, shardID)
 			}
 		}
 	}

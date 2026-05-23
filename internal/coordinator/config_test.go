@@ -59,6 +59,22 @@ func TestValidateStaticConfigRejectsDuplicateReplicaAssignment(t *testing.T) {
 	}
 }
 
+func TestValidateStaticConfigRejectsSameNodeReplicasWhenAvoidable(t *testing.T) {
+	t.Parallel()
+
+	cfg := StaticConfig{
+		Indexes: []IndexConfig{{Name: "books", ShardCount: 1, ReplicationFactor: 2}},
+		Nodes:   []NodeConfig{{NodeID: "node-a"}, {NodeID: "node-b"}},
+		Assignments: []ShardAssignment{
+			{IndexName: "books", ShardID: 0, ReplicaID: "r1", NodeID: "node-a"},
+			{IndexName: "books", ShardID: 0, ReplicaID: "r2", NodeID: "node-a"},
+		},
+	}
+	if err := ValidateStaticConfig(cfg); err == nil {
+		t.Fatal("expected same-node replicas to fail when another node exists")
+	}
+}
+
 func TestValidateStaticConfigRejectsUnsafeAssignmentIDs(t *testing.T) {
 	t.Parallel()
 
