@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package kitsune.searchnode.v1;
+
+option go_package = "github.com/cobeo2004/kitsune/api/searchnode/v1;searchnodev1";
+
+service SearchNodeService {
+  rpc SearchShard(SearchShardRequest) returns (SearchShardResponse);
+  rpc TabletStatus(TabletStatusRequest) returns (TabletStatusResponse);
+}
+
+message TabletRef {
+  string index_name = 1;
+  int32 shard_id = 2;
+  string replica_id = 3;
+}
+
+message SearchShardRequest {
+  TabletRef tablet = 1;
+  string query = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchHit {
+  string document_id = 1;
+  double score = 2;
+}
+
+message SearchShardResponse {
+  uint64 total = 1;
+  repeated SearchHit hits = 2;
+}
+
+message TabletStatusRequest {}
+
+message TabletStatus {
+  TabletRef tablet = 1;
+  string node_id = 2;
+  string state = 3;
+  int64 last_checkpoint = 4;
+}
+
+message TabletStatusResponse {
+  repeated TabletStatus tablets = 1;
+}
