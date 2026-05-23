@@ -16,12 +16,13 @@ func TestApplierAppliesUpsertEvent(t *testing.T) {
 	applier := NewApplier(tb)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Fields:        map[string]any{"title": "Bleve"},
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -41,11 +42,12 @@ func TestApplierAppliesDeleteEvent(t *testing.T) {
 	applier := NewApplier(tb)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationDelete,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationDelete,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -65,11 +67,12 @@ func TestApplierRejectsInvalidEvent(t *testing.T) {
 	applier := NewApplier(tb)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
 	})
 	if err == nil {
 		t.Fatal("expected invalid event to fail")
@@ -86,13 +89,14 @@ func TestShardApplierRejectsWrongShard(t *testing.T) {
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 1, ReplicaID: "replica-a"}, tb, nil)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Sequence:   10,
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      10,
+		Fields:        map[string]any{"title": "Bleve"},
 	})
 	if err == nil {
 		t.Fatal("expected wrong shard to fail")
@@ -110,6 +114,7 @@ func TestShardApplierRejectsWrongMappingVersion(t *testing.T) {
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
 		ID:             "evt-1",
+		SchemaVersion:  events.CurrentSchemaVersion,
 		Operation:      events.OperationUpsert,
 		IndexName:      "books",
 		ShardID:        0,
@@ -134,13 +139,14 @@ func TestShardApplierSkipsCheckpointedEvent(t *testing.T) {
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, store)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-9",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Sequence:   9,
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-9",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      9,
+		Fields:        map[string]any{"title": "Bleve"},
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -161,13 +167,14 @@ func TestShardApplierPersistsCheckpointAfterApply(t *testing.T) {
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, store)
 
 	err := applier.Apply(context.Background(), events.DocumentEvent{
-		ID:         "evt-11",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Sequence:   11,
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-11",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      11,
+		Fields:        map[string]any{"title": "Bleve"},
 	})
 	if err != nil {
 		t.Fatalf("apply: %v", err)
@@ -192,13 +199,14 @@ func TestShardApplierAcksMessageAfterApply(t *testing.T) {
 	tb := &fakeTablet{}
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, nil)
 	msg := &fakeMessage{event: events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Sequence:   1,
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      1,
+		Fields:        map[string]any{"title": "Bleve"},
 	}}
 
 	if err := applier.ApplyMessage(context.Background(), msg); err != nil {
@@ -212,19 +220,48 @@ func TestShardApplierAcksMessageAfterApply(t *testing.T) {
 	}
 }
 
+func TestShardApplierUsesMessageSequenceForCheckpoint(t *testing.T) {
+	t.Parallel()
+
+	tb := &fakeTablet{}
+	store := &fakeCheckpointStore{}
+	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, store)
+	msg := &fakeMessage{
+		sequence: 42,
+		event: events.DocumentEvent{
+			ID:            "evt-42",
+			SchemaVersion: events.CurrentSchemaVersion,
+			Operation:     events.OperationUpsert,
+			IndexName:     "books",
+			ShardID:       0,
+			DocumentID:    "doc-1",
+			Sequence:      7,
+			Fields:        map[string]any{"title": "Bleve"},
+		},
+	}
+
+	if err := applier.ApplyMessage(context.Background(), msg); err != nil {
+		t.Fatalf("apply message: %v", err)
+	}
+	if store.lastCheckpoint.Sequence != 42 {
+		t.Fatalf("checkpoint sequence = %d, want 42", store.lastCheckpoint.Sequence)
+	}
+}
+
 func TestShardApplierDoesNotAckFailedApply(t *testing.T) {
 	t.Parallel()
 
 	tb := &fakeTablet{upsertErr: errors.New("tablet down")}
 	applier := NewShardApplier(Identity{IndexName: "books", ShardID: 0, ReplicaID: "replica-a"}, tb, nil)
 	msg := &fakeMessage{event: events.DocumentEvent{
-		ID:         "evt-1",
-		Operation:  events.OperationUpsert,
-		IndexName:  "books",
-		ShardID:    0,
-		DocumentID: "doc-1",
-		Sequence:   1,
-		Fields:     map[string]any{"title": "Bleve"},
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      1,
+		Fields:        map[string]any{"title": "Bleve"},
 	}}
 
 	err := applier.ApplyMessage(context.Background(), msg)
@@ -284,12 +321,17 @@ func (s *fakeCheckpointStore) PutCheckpoint(_ context.Context, id Identity, chec
 }
 
 type fakeMessage struct {
-	event events.DocumentEvent
-	acks  int
+	event    events.DocumentEvent
+	sequence int64
+	acks     int
 }
 
 func (m *fakeMessage) Event() events.DocumentEvent {
 	return m.event
+}
+
+func (m *fakeMessage) Sequence() int64 {
+	return m.sequence
 }
 
 func (m *fakeMessage) Ack(context.Context) error {

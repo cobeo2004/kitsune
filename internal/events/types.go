@@ -6,6 +6,9 @@ import "time"
 type Operation string
 
 const (
+	// CurrentSchemaVersion is the only event envelope schema this binary accepts.
+	CurrentSchemaVersion = 1
+
 	// OperationUpsert indexes or replaces one document.
 	OperationUpsert Operation = "upsert"
 	// OperationDelete removes one document.
@@ -15,6 +18,7 @@ const (
 // DocumentEvent is the durable event envelope for one document mutation.
 type DocumentEvent struct {
 	ID              string         `json:"id"`
+	SchemaVersion   int            `json:"schemaVersion"`
 	Operation       Operation      `json:"operation"`
 	IndexName       string         `json:"indexName"`
 	ShardID         int            `json:"shardId"`

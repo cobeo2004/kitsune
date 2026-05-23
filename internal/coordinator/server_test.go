@@ -116,15 +116,30 @@ func TestUpsertRejectsMissingIndex(t *testing.T) {
 func TestUpsertAcceptsExistingIndex(t *testing.T) {
 	t.Parallel()
 
-	srv := NewServer(ServerConfig{})
+	srv := NewServer(ServerConfig{EventBus: events.NewMemoryBus()})
 	createBooksIndex(t, srv, 1, 1)
-	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{}}`))
+	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{"title":"Bleve"}}`))
 	rec := httptest.NewRecorder()
 
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusAccepted, rec.Body.String())
+	}
+}
+
+func TestUpsertRequiresEventBus(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{})
+	createBooksIndex(t, srv, 1, 1)
+	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{"title":"Bleve"}}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
 	}
 }
 
@@ -149,6 +164,9 @@ func TestUpsertPublishesDocumentEvent(t *testing.T) {
 	evt := got[0]
 	if evt.IndexName != "books" || evt.DocumentID != "doc-1" {
 		t.Fatalf("event identity = %#v", evt)
+	}
+	if evt.SchemaVersion != events.CurrentSchemaVersion {
+		t.Fatalf("schema version = %d, want %d", evt.SchemaVersion, events.CurrentSchemaVersion)
 	}
 	if evt.MappingVersion != 0 {
 		t.Fatalf("mapping version = %d, want 0", evt.MappingVersion)

@@ -324,21 +324,24 @@ func (s *Server) handleUpsertDocument(w http.ResponseWriter, r *http.Request, in
 		http.Error(w, "invalid document payload", http.StatusBadRequest)
 		return
 	}
-	if s.eventBus != nil {
-		fields := documentFields(payload)
-		evt := newDocumentEvent(info, documentID, fields)
-		if err := events.Validate(evt); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+	if s.eventBus == nil {
+		http.Error(w, "document event bus is not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	fields := documentFields(payload)
+	evt := newDocumentEvent(info, documentID, fields)
+	if err := events.Validate(evt); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.eventBus.Publish(r.Context(), evt); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, err.Error(), http.StatusRequestTimeout)
 			return
 		}
-		if err := s.eventBus.Publish(r.Context(), evt); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				http.Error(w, err.Error(), http.StatusRequestTimeout)
-				return
-			}
-			http.Error(w, "publish document event: "+err.Error(), http.StatusBadGateway)
-			return
-		}
+		http.Error(w, "publish document event: "+err.Error(), http.StatusBadGateway)
+		return
 	}
 
 	w.WriteHeader(http.StatusAccepted)
@@ -431,6 +434,7 @@ func newDocumentEvent(index IndexInfo, documentID string, fields map[string]any)
 	now := time.Now().UTC()
 	return events.DocumentEvent{
 		ID:              fmt.Sprintf("%s/%d/%s/%d", index.Name, shardID, documentID, now.UnixNano()),
+		SchemaVersion:   events.CurrentSchemaVersion,
 		Operation:       events.OperationUpsert,
 		IndexName:       index.Name,
 		ShardID:         shardID,

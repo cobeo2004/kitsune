@@ -7,6 +7,9 @@ func Validate(evt DocumentEvent) error {
 	if evt.ID == "" {
 		return fmt.Errorf("event ID is required")
 	}
+	if evt.SchemaVersion != CurrentSchemaVersion {
+		return fmt.Errorf("event schema version %d is unsupported", evt.SchemaVersion)
+	}
 	if evt.IndexName == "" {
 		return fmt.Errorf("index name is required")
 	}
