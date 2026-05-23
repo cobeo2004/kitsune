@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -24,8 +25,18 @@ type MinIOConfig struct {
 
 // MinIOStore stores snapshots in MinIO or another S3-compatible object store.
 type MinIOStore struct {
-	client *minio.Client
+	client objectClient
 	bucket string
+}
+
+type objectClient interface {
+	PutObject(ctx context.Context, bucketName string, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) error
+	GetObject(ctx context.Context, bucketName string, objectName string) ([]byte, error)
+	StatObject(ctx context.Context, bucketName string, objectName string) error
+}
+
+type minioObjectClient struct {
+	client *minio.Client
 }
 
 // NewMinIOStore creates a MinIO-backed snapshot store.
@@ -51,7 +62,7 @@ func NewMinIOStore(cfg MinIOConfig) (*MinIOStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create minio client: %w", err)
 	}
-	return &MinIOStore{client: client, bucket: cfg.Bucket}, nil
+	return &MinIOStore{client: minioObjectClient{client: client}, bucket: cfg.Bucket}, nil
 }
 
 // Put uploads a verified snapshot payload and manifest.
@@ -60,8 +71,8 @@ func (s *MinIOStore) Put(ctx context.Context, manifest Manifest, data []byte) er
 		return err
 	}
 
-	manifestObject, dataObject := s.objectNames(manifest.IndexName, manifest.ShardID, manifest.SnapshotGeneration)
-	if _, err := s.client.PutObject(ctx, s.bucket, dataObject, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/octet-stream"}); err != nil {
+	manifestObject, dataObject := s.objectNames(manifest.IndexName, manifest.ShardID, manifest.ReplicaSourceNode, manifest.SnapshotGeneration)
+	if err := s.client.PutObject(ctx, s.bucket, dataObject, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/octet-stream"}); err != nil {
 		return fmt.Errorf("put snapshot data object: %w", err)
 	}
 
@@ -69,18 +80,21 @@ func (s *MinIOStore) Put(ctx context.Context, manifest Manifest, data []byte) er
 	if err != nil {
 		return fmt.Errorf("marshal snapshot manifest: %w", err)
 	}
-	if _, err := s.client.PutObject(ctx, s.bucket, manifestObject, bytes.NewReader(manifestData), int64(len(manifestData)), minio.PutObjectOptions{ContentType: "application/json"}); err != nil {
+	if err := s.client.PutObject(ctx, s.bucket, manifestObject, bytes.NewReader(manifestData), int64(len(manifestData)), minio.PutObjectOptions{ContentType: "application/json"}); err != nil {
 		return fmt.Errorf("put snapshot manifest object: %w", err)
 	}
 	return nil
 }
 
 // Get downloads and verifies a snapshot payload and manifest.
-func (s *MinIOStore) Get(ctx context.Context, indexName string, shardID int, generation int64) (Manifest, []byte, error) {
-	manifestObject, dataObject := s.objectNames(indexName, shardID, generation)
+func (s *MinIOStore) Get(ctx context.Context, indexName string, shardID int, replicaSourceNode string, generation int64) (Manifest, []byte, error) {
+	manifestObject, dataObject := s.objectNames(indexName, shardID, replicaSourceNode, generation)
 
 	manifestData, err := s.getObject(ctx, manifestObject)
 	if err != nil {
+		if errors.Is(err, ErrSnapshotNotFound) {
+			return Manifest{}, nil, err
+		}
 		return Manifest{}, nil, fmt.Errorf("get snapshot manifest object: %w", err)
 	}
 	var manifest Manifest
@@ -88,7 +102,10 @@ func (s *MinIOStore) Get(ctx context.Context, indexName string, shardID int, gen
 		return Manifest{}, nil, fmt.Errorf("decode snapshot manifest: %w", err)
 	}
 
-	if _, err := s.client.StatObject(ctx, s.bucket, dataObject, minio.StatObjectOptions{}); err != nil {
+	if err := s.client.StatObject(ctx, s.bucket, dataObject); err != nil {
+		if errors.Is(err, ErrSnapshotNotFound) || minioErrorCode(err) == minio.NoSuchKey {
+			return Manifest{}, nil, fmt.Errorf("%w: %s", ErrSnapshotNotFound, dataObject)
+		}
 		return Manifest{}, nil, fmt.Errorf("stat snapshot data object: %w", err)
 	}
 	data, err := s.getObject(ctx, dataObject)
@@ -102,14 +119,33 @@ func (s *MinIOStore) Get(ctx context.Context, indexName string, shardID int, gen
 }
 
 func (s *MinIOStore) getObject(ctx context.Context, objectName string) ([]byte, error) {
-	object, err := s.client.GetObject(ctx, s.bucket, objectName, minio.GetObjectOptions{})
+	data, err := s.client.GetObject(ctx, s.bucket, objectName)
+	if err != nil {
+		if errors.Is(err, ErrSnapshotNotFound) || minioErrorCode(err) == minio.NoSuchKey {
+			return nil, fmt.Errorf("%w: %s", ErrSnapshotNotFound, objectName)
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+func minioErrorCode(err error) string {
+	return minio.ToErrorResponse(err).Code
+}
+
+func (c minioObjectClient) PutObject(ctx context.Context, bucketName string, objectName string, reader io.Reader, objectSize int64, opts minio.PutObjectOptions) error {
+	_, err := c.client.PutObject(ctx, bucketName, objectName, reader, objectSize, opts)
+	return err
+}
+
+func (c minioObjectClient) GetObject(ctx context.Context, bucketName string, objectName string) ([]byte, error) {
+	object, err := c.client.GetObject(ctx, bucketName, objectName, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		_ = object.Close()
 	}()
-
 	data, err := io.ReadAll(object)
 	if err != nil {
 		return nil, err
@@ -117,7 +153,12 @@ func (s *MinIOStore) getObject(ctx context.Context, objectName string) ([]byte, 
 	return data, nil
 }
 
-func (s *MinIOStore) objectNames(indexName string, shardID int, generation int64) (manifestObject string, dataObject string) {
-	base := fmt.Sprintf("snapshots/%s/shard-%d/generation-%06d", indexName, shardID, generation)
+func (c minioObjectClient) StatObject(ctx context.Context, bucketName string, objectName string) error {
+	_, err := c.client.StatObject(ctx, bucketName, objectName, minio.StatObjectOptions{})
+	return err
+}
+
+func (s *MinIOStore) objectNames(indexName string, shardID int, replicaSourceNode string, generation int64) (manifestObject string, dataObject string) {
+	base := fmt.Sprintf("snapshots/%s/shard-%d/%s/generation-%06d", indexName, shardID, replicaSourceNode, generation)
 	return base + "/" + manifestFile, base + "/" + snapshotFile
 }

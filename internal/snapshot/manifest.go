@@ -12,6 +12,7 @@ type Manifest struct {
 	LastEventID        string `json:"lastEventId,omitempty"`
 	LastEventSequence  int64  `json:"lastEventSequence"`
 	CreatedUnix        int64  `json:"createdUnix"`
+	Compression        string `json:"compression,omitempty"`
 	ChecksumSHA256     string `json:"checksumSha256"`
 }
 
@@ -32,11 +33,17 @@ func (m Manifest) Validate() error {
 	if m.MappingVersion < 0 {
 		return fmt.Errorf("mapping version must be non-negative")
 	}
+	if m.LastEventID == "" {
+		return fmt.Errorf("last event ID is required")
+	}
 	if m.LastEventSequence < 0 {
 		return fmt.Errorf("last event sequence must be non-negative")
 	}
 	if m.CreatedUnix <= 0 {
 		return fmt.Errorf("created time is required")
+	}
+	if m.Compression != "" && m.Compression != CompressionGzip {
+		return fmt.Errorf("unsupported snapshot compression %q", m.Compression)
 	}
 	if m.ChecksumSHA256 == "" {
 		return fmt.Errorf("checksum is required")

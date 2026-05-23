@@ -32,7 +32,7 @@ func (s *FilesystemStore) Put(ctx context.Context, manifest Manifest, data []byt
 		return err
 	}
 
-	dir := s.snapshotDir(manifest.IndexName, manifest.ShardID, manifest.SnapshotGeneration)
+	dir := s.snapshotDir(manifest.IndexName, manifest.ShardID, manifest.ReplicaSourceNode, manifest.SnapshotGeneration)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create snapshot directory: %w", err)
 	}
@@ -50,14 +50,17 @@ func (s *FilesystemStore) Put(ctx context.Context, manifest Manifest, data []byt
 }
 
 // Get loads a snapshot payload and manifest.
-func (s *FilesystemStore) Get(ctx context.Context, indexName string, shardID int, generation int64) (Manifest, []byte, error) {
+func (s *FilesystemStore) Get(ctx context.Context, indexName string, shardID int, replicaSourceNode string, generation int64) (Manifest, []byte, error) {
 	if err := ctx.Err(); err != nil {
 		return Manifest{}, nil, err
 	}
 
-	dir := s.snapshotDir(indexName, shardID, generation)
+	dir := s.snapshotDir(indexName, shardID, replicaSourceNode, generation)
 	manifestData, err := os.ReadFile(filepath.Join(dir, manifestFile))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return Manifest{}, nil, fmt.Errorf("%w: %s", ErrSnapshotNotFound, dir)
+		}
 		return Manifest{}, nil, fmt.Errorf("read snapshot manifest: %w", err)
 	}
 	var manifest Manifest
@@ -66,6 +69,9 @@ func (s *FilesystemStore) Get(ctx context.Context, indexName string, shardID int
 	}
 	data, err := os.ReadFile(filepath.Join(dir, snapshotFile))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return Manifest{}, nil, fmt.Errorf("%w: %s", ErrSnapshotNotFound, dir)
+		}
 		return Manifest{}, nil, fmt.Errorf("read snapshot data: %w", err)
 	}
 	if err := VerifySnapshot(manifest, data); err != nil {
@@ -74,6 +80,6 @@ func (s *FilesystemStore) Get(ctx context.Context, indexName string, shardID int
 	return manifest, data, nil
 }
 
-func (s *FilesystemStore) snapshotDir(indexName string, shardID int, generation int64) string {
-	return filepath.Join(s.root, indexName, fmt.Sprintf("shard-%d", shardID), fmt.Sprintf("generation-%06d", generation))
+func (s *FilesystemStore) snapshotDir(indexName string, shardID int, replicaSourceNode string, generation int64) string {
+	return filepath.Join(s.root, indexName, fmt.Sprintf("shard-%d", shardID), replicaSourceNode, fmt.Sprintf("generation-%06d", generation))
 }
