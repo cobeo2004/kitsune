@@ -27,8 +27,11 @@ The current codebase contains the first distributed-search slices:
 - Static multi-index shard routing with replica selection.
 - etcd and in-memory metadata manager implementations with snapshots and watches.
 - Document event validation, in-memory event bus, JetStream publication boundary, and replay applier.
+- Tombstone-aware replay ordering and compaction-safe checkpoint evidence.
+- Compressed snapshot packaging, checksum verification, S3-compatible storage, and trusted restore boundaries.
+- HashiCorp memberlist advisory health cache surfaced through cluster status.
 
-Search is eventually consistent. A coordinator document write is accepted after the document event is published. The replay applier now validates shard identity, applies events to tablets, acknowledges messages after successful apply, and persists checkpoints; the full search-node JetStream consumer loop is still a later milestone.
+Search is eventually consistent. A coordinator document write is accepted after the document event is published. The replay applier validates shard identity, applies events to tablets, acknowledges messages after successful apply, and persists checkpoints. Gossip health is advisory only; shard ownership and tablet readiness stay anchored in metadata.
 
 ## Development
 
@@ -41,7 +44,7 @@ go test ./...
 Run the currently focused packages:
 
 ```powershell
-go test ./internal/tablet ./internal/searchnode ./internal/coordinator ./internal/metadata ./internal/events ./internal/replay
+go test ./internal/tablet ./internal/searchnode ./internal/coordinator ./internal/metadata ./internal/events ./internal/replay ./internal/snapshot ./internal/member ./internal/status
 ```
 
 Format and vet before committing:
