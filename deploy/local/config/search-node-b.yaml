@@ -1,0 +1,23 @@
+nodeID: "node-b"
+grpcAddress: ":9002"
+dataDir: "/data/kitsune"
+etcdEndpoints:
+  - "http://etcd:2379"
+natsURL: "nats://nats:4222"
+memberlistBind: ":7946"
+memberlistJoin:
+  - "search-node-a:7946"
+  - "search-node-c:7946"
+tablets:
+  - indexName: "books"
+    shardID: 0
+    replicaID: "replica-b"
+    mappingVersion: 1
+    mapping:
+      defaultAnalyzer: "standard"
+  - indexName: "books"
+    shardID: 1
+    replicaID: "replica-b"
+    mappingVersion: 1
+    mapping:
+      defaultAnalyzer: "standard"

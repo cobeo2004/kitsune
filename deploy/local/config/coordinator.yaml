@@ -1,0 +1,78 @@
+httpAddress: ":8080"
+etcdEndpoints:
+  - "http://etcd:2379"
+natsURL: "nats://nats:4222"
+minio:
+  endpoint: "minio:9000"
+  accessKey: "minioadmin"
+  secretKey: "minioadmin"
+  secure: false
+documentMaxBytes: 1048576
+staticConfig:
+  indexes:
+    - name: "books"
+      shardCount: 3
+      replicationFactor: 2
+      mappingVersion: 1
+      mapping:
+        defaultAnalyzer: "standard"
+  nodes:
+    - nodeID: "node-a"
+    - nodeID: "node-b"
+    - nodeID: "node-c"
+  assignments:
+    - indexName: "books"
+      shardID: 0
+      replicaID: "replica-a"
+      nodeID: "node-a"
+    - indexName: "books"
+      shardID: 0
+      replicaID: "replica-b"
+      nodeID: "node-b"
+    - indexName: "books"
+      shardID: 1
+      replicaID: "replica-b"
+      nodeID: "node-b"
+    - indexName: "books"
+      shardID: 1
+      replicaID: "replica-c"
+      nodeID: "node-c"
+    - indexName: "books"
+      shardID: 2
+      replicaID: "replica-c"
+      nodeID: "node-c"
+    - indexName: "books"
+      shardID: 2
+      replicaID: "replica-a"
+      nodeID: "node-a"
+routes:
+  - indexName: "books"
+    shardID: 0
+    replicaID: "replica-a"
+    nodeID: "node-a"
+    grpcAddress: "search-node-a:9001"
+  - indexName: "books"
+    shardID: 0
+    replicaID: "replica-b"
+    nodeID: "node-b"
+    grpcAddress: "search-node-b:9002"
+  - indexName: "books"
+    shardID: 1
+    replicaID: "replica-b"
+    nodeID: "node-b"
+    grpcAddress: "search-node-b:9002"
+  - indexName: "books"
+    shardID: 1
+    replicaID: "replica-c"
+    nodeID: "node-c"
+    grpcAddress: "search-node-c:9003"
+  - indexName: "books"
+    shardID: 2
+    replicaID: "replica-c"
+    nodeID: "node-c"
+    grpcAddress: "search-node-c:9003"
+  - indexName: "books"
+    shardID: 2
+    replicaID: "replica-a"
+    nodeID: "node-a"
+    grpcAddress: "search-node-a:9001"

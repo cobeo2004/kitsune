@@ -1,0 +1,121 @@
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    command:
+      - etcd
+      - --name=etcd
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --data-dir=/etcd-data
+    ports:
+      - "2379:2379"
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  nats:
+    image: nats:2.10
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/healthz >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  coordinator:
+    build:
+      context: ../..
+    command: ["coordinator", "--config", "/config/coordinator.yaml"]
+    depends_on:
+      etcd:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./config:/config:ro
+    ports:
+      - "8080:8080"
+
+  search-node-a:
+    build:
+      context: ../..
+    command: ["search-node", "--config", "/config/search-node-a.yaml"]
+    depends_on:
+      etcd:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./config:/config:ro
+      - search-node-a-data:/data/kitsune
+
+  search-node-b:
+    build:
+      context: ../..
+    command: ["search-node", "--config", "/config/search-node-b.yaml"]
+    depends_on:
+      etcd:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./config:/config:ro
+      - search-node-b-data:/data/kitsune
+
+  search-node-c:
+    build:
+      context: ../..
+    command: ["search-node", "--config", "/config/search-node-c.yaml"]
+    depends_on:
+      etcd:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./config:/config:ro
+      - search-node-c-data:/data/kitsune
+
+volumes:
+  etcd-data:
+  nats-data:
+  minio-data:
+  search-node-a-data:
+  search-node-b-data:
+  search-node-c-data:
