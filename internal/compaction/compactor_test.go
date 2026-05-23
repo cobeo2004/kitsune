@@ -27,16 +27,43 @@ func TestCompactionRejectsMissingReplicaCheckpoints(t *testing.T) {
 	}
 }
 
+func TestCompactionRejectsMissingRequiredReplica(t *testing.T) {
+	t.Parallel()
+
+	err := CanCompact(SafetyInput{
+		MinimumRequiredSequence: 10,
+		RequiredReplicas:        []string{"r1", "r2"},
+		ReplicaCheckpoints:      map[string]int64{"r1": 10},
+		SnapshotCheckpoint:      10,
+	})
+	if err == nil {
+		t.Fatal("expected missing required replica to block compaction")
+	}
+}
+
+func TestCompactionRejectsMissingSnapshotFloor(t *testing.T) {
+	t.Parallel()
+
+	err := CanCompact(SafetyInput{
+		MinimumRequiredSequence: 10,
+		ReplicaCheckpoints:      map[string]int64{"r1": 10, "r2": 10},
+	})
+	if err == nil {
+		t.Fatal("expected missing snapshot floor to block compaction")
+	}
+}
+
 func TestCompactEventsPreservesFinalDocumentState(t *testing.T) {
 	t.Parallel()
 
 	got, err := CompactEvents(SafetyInput{
 		MinimumRequiredSequence: 3,
 		ReplicaCheckpoints:      map[string]int64{"r1": 3, "r2": 3},
+		SnapshotCheckpoint:      3,
 	}, []events.DocumentEvent{
-		{ID: "evt-1", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationUpsert, IndexName: "books", ShardID: 0, DocumentID: "doc-1", Sequence: 1, Fields: map[string]any{"title": "old"}},
-		{ID: "evt-2", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationDelete, IndexName: "books", ShardID: 0, DocumentID: "doc-1", Sequence: 2},
-		{ID: "evt-3", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationUpsert, IndexName: "books", ShardID: 0, DocumentID: "doc-2", Sequence: 3, Fields: map[string]any{"title": "kept"}},
+		{ID: "evt-1", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationUpsert, IndexName: "books", ShardID: 0, DocumentID: "doc-1", DocumentVersion: 1, Sequence: 1, Fields: map[string]any{"title": "old"}},
+		{ID: "evt-2", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationDelete, IndexName: "books", ShardID: 0, DocumentID: "doc-1", DocumentVersion: 2, Sequence: 2},
+		{ID: "evt-3", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationUpsert, IndexName: "books", ShardID: 0, DocumentID: "doc-2", DocumentVersion: 1, Sequence: 3, Fields: map[string]any{"title": "kept"}},
 	})
 	if err != nil {
 		t.Fatalf("compact events: %v", err)
@@ -50,5 +77,20 @@ func TestCompactEventsPreservesFinalDocumentState(t *testing.T) {
 	}
 	if got[1].ID != "evt-3" {
 		t.Fatalf("second event ID = %q, want evt-3", got[1].ID)
+	}
+}
+
+func TestCompactEventsRejectsInvalidEvent(t *testing.T) {
+	t.Parallel()
+
+	_, err := CompactEvents(SafetyInput{
+		MinimumRequiredSequence: 3,
+		ReplicaCheckpoints:      map[string]int64{"r1": 3},
+		SnapshotCheckpoint:      3,
+	}, []events.DocumentEvent{
+		{ID: "evt-1", SchemaVersion: events.CurrentSchemaVersion, Operation: events.OperationUpsert, IndexName: "books", ShardID: 0, DocumentID: "doc-1", Sequence: 1, Fields: map[string]any{"title": "old"}},
+	})
+	if err == nil {
+		t.Fatal("expected invalid event to fail")
 	}
 }

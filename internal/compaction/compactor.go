@@ -10,7 +10,9 @@ import (
 // SafetyInput describes the checkpoints required before event compaction.
 type SafetyInput struct {
 	MinimumRequiredSequence int64
+	RequiredReplicas        []string
 	ReplicaCheckpoints      map[string]int64
+	SnapshotCheckpoint      int64
 }
 
 // CanCompact verifies that no known replica still needs pre-compaction events.
@@ -20,6 +22,14 @@ func CanCompact(input SafetyInput) error {
 	}
 	if len(input.ReplicaCheckpoints) == 0 {
 		return fmt.Errorf("replica checkpoints are required")
+	}
+	if input.SnapshotCheckpoint < input.MinimumRequiredSequence {
+		return fmt.Errorf("snapshot checkpoint %d is behind compaction sequence %d", input.SnapshotCheckpoint, input.MinimumRequiredSequence)
+	}
+	for _, replicaID := range input.RequiredReplicas {
+		if _, ok := input.ReplicaCheckpoints[replicaID]; !ok {
+			return fmt.Errorf("replica %s checkpoint is required", replicaID)
+		}
 	}
 	for replicaID, checkpoint := range input.ReplicaCheckpoints {
 		if checkpoint < input.MinimumRequiredSequence {
@@ -38,6 +48,9 @@ func CompactEvents(input SafetyInput, in []events.DocumentEvent) ([]events.Docum
 	latestCompacted := make(map[documentKey]events.DocumentEvent)
 	out := make([]events.DocumentEvent, 0, len(in))
 	for _, evt := range in {
+		if err := events.Validate(evt); err != nil {
+			return nil, fmt.Errorf("validate event %q before compaction: %w", evt.ID, err)
+		}
 		if evt.Sequence > input.MinimumRequiredSequence {
 			out = append(out, evt)
 			continue
