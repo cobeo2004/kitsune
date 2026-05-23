@@ -9,5 +9,9 @@ func SelectReplica(candidates []ReplicaCandidate) (ReplicaCandidate, error) {
 			return candidate, nil
 		}
 	}
+	if len(candidates) > 0 {
+		first := candidates[0]
+		return ReplicaCandidate{}, fmt.Errorf("no healthy replica available for %s shard %d", first.IndexName, first.ShardID)
+	}
 	return ReplicaCandidate{}, fmt.Errorf("no healthy replica available")
 }
