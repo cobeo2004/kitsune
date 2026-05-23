@@ -24,6 +24,17 @@ type Route struct {
 // StaticRoutes maps index names to configured shard routes.
 type StaticRoutes map[string][]Route
 
+func cloneStaticRoutes(routes StaticRoutes) StaticRoutes {
+	if routes == nil {
+		return nil
+	}
+	cloned := make(StaticRoutes, len(routes))
+	for index, indexRoutes := range routes {
+		cloned[index] = append([]Route(nil), indexRoutes...)
+	}
+	return cloned
+}
+
 func (r StaticRoutes) routesForIndex(index string) []Route {
 	if len(r) == 0 {
 		return nil
@@ -114,8 +125,8 @@ func routesFromMetadata(replicas []metadata.ShardReplicaRecord, statuses []metad
 		if !ok {
 			continue
 		}
-		if state, ok := states[routeAssignmentKey(replica.IndexName, replica.ShardID, replica.ReplicaID, replica.NodeID)]; ok {
-			route.State = state
+		if status, ok := states[routeAssignmentKey(replica.IndexName, replica.ShardID, replica.ReplicaID)]; ok && status.NodeID == route.NodeID {
+			route.State = ReplicaState(status.State)
 		} else {
 			route.State = ReplicaUnknown
 		}
@@ -124,10 +135,10 @@ func routesFromMetadata(replicas []metadata.ShardReplicaRecord, statuses []metad
 	return routes
 }
 
-func statesFromMetadata(statuses []metadata.TabletStatusRecord) map[assignmentKey]ReplicaState {
-	states := make(map[assignmentKey]ReplicaState, len(statuses))
+func statesFromMetadata(statuses []metadata.TabletStatusRecord) map[assignmentKey]metadata.TabletStatusRecord {
+	states := make(map[assignmentKey]metadata.TabletStatusRecord, len(statuses))
 	for _, status := range statuses {
-		states[routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID, status.NodeID)] = ReplicaState(status.State)
+		states[routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID)] = status
 	}
 	return states
 }
@@ -146,14 +157,22 @@ func upsertRoute(routes StaticRoutes, indexName string, route Route) StaticRoute
 		routes = make(StaticRoutes)
 	}
 	indexRoutes := routes.routesForIndex(indexName)
-	for i, existing := range indexRoutes {
+	filtered := indexRoutes[:0]
+	replaced := false
+	for _, existing := range indexRoutes {
 		if sameRouteIdentity(existing, route) {
-			indexRoutes[i] = route
-			routes[indexName] = indexRoutes
-			return routes
+			if !replaced {
+				filtered = append(filtered, route)
+				replaced = true
+			}
+			continue
 		}
+		filtered = append(filtered, existing)
 	}
-	routes[indexName] = append(indexRoutes, route)
+	if !replaced {
+		filtered = append(filtered, route)
+	}
+	routes[indexName] = filtered
 	return routes
 }
 
@@ -161,7 +180,7 @@ func removeRoute(routes StaticRoutes, replica metadata.ShardReplicaRecord) Stati
 	indexRoutes := routes.routesForIndex(replica.IndexName)
 	filtered := indexRoutes[:0]
 	for _, route := range indexRoutes {
-		if route.ShardID == replica.ShardID && route.ReplicaID == replica.ReplicaID && route.NodeID == replica.NodeID {
+		if route.ShardID == replica.ShardID && route.ReplicaID == replica.ReplicaID {
 			continue
 		}
 		filtered = append(filtered, route)
@@ -177,8 +196,12 @@ func removeRoute(routes StaticRoutes, replica metadata.ShardReplicaRecord) Stati
 func updateRouteState(routes StaticRoutes, status metadata.TabletStatusRecord) StaticRoutes {
 	indexRoutes := routes.routesForIndex(status.IndexName)
 	for i, route := range indexRoutes {
-		if route.ShardID == status.ShardID && route.ReplicaID == status.ReplicaID && route.NodeID == status.NodeID {
-			indexRoutes[i].State = ReplicaState(status.State)
+		if route.ShardID == status.ShardID && route.ReplicaID == status.ReplicaID {
+			if route.NodeID == status.NodeID {
+				indexRoutes[i].State = ReplicaState(status.State)
+			} else {
+				indexRoutes[i].State = ReplicaUnknown
+			}
 			routes[status.IndexName] = indexRoutes
 			return routes
 		}
@@ -187,5 +210,5 @@ func updateRouteState(routes StaticRoutes, status metadata.TabletStatusRecord) S
 }
 
 func sameRouteIdentity(a, b Route) bool {
-	return a.ShardID == b.ShardID && a.ReplicaID == b.ReplicaID && a.NodeID == b.NodeID
+	return a.ShardID == b.ShardID && a.ReplicaID == b.ReplicaID
 }

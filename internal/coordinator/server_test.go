@@ -16,6 +16,7 @@ import (
 
 	searchnodev1 "github.com/cobeo2004/kitsune/api/searchnode/v1"
 	"github.com/cobeo2004/kitsune/internal/events"
+	"github.com/cobeo2004/kitsune/internal/member"
 	"github.com/cobeo2004/kitsune/internal/metadata"
 	"github.com/cobeo2004/kitsune/internal/searchnode"
 	"github.com/cobeo2004/kitsune/internal/tablet"
@@ -329,6 +330,349 @@ func TestClusterStatusReportsReady(t *testing.T) {
 	}
 	if body.RouteIndexes != 1 {
 		t.Fatalf("route indexes = %d, want 1", body.RouteIndexes)
+	}
+}
+
+func TestClusterStatusIncludesAuthoritativeMetadataAndAdvisoryHealth(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	manager := metadata.NewMemoryManager()
+	if err := manager.PutIndex(ctx, metadata.IndexRecord{Name: "books", ShardCount: 1, ReplicationFactor: 1, MappingVersion: 1, Mapping: map[string]any{"defaultAnalyzer": "standard"}}, 0); err != nil {
+		t.Fatalf("put index: %v", err)
+	}
+	if err := manager.PutShardReplica(ctx, metadata.ShardReplicaRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"}, 0); err != nil {
+		t.Fatalf("put shard replica: %v", err)
+	}
+	if err := manager.PutTabletStatus(ctx, metadata.TabletStatusRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaReady), LastCheckpoint: 42}, 0); err != nil {
+		t.Fatalf("put tablet status: %v", err)
+	}
+	if err := manager.PutCheckpoint(ctx, metadata.CheckpointRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", Sequence: 42, EventID: "event-42"}, 0); err != nil {
+		t.Fatalf("put checkpoint: %v", err)
+	}
+	cache := member.NewCache()
+	cache.Update(member.NodeView{NodeID: "node-a", GRPCAddress: "127.0.0.1:9001", Health: member.HealthDead})
+	srv := NewServer(ServerConfig{MetadataManager: manager, MemberCache: cache})
+	req := httptest.NewRequest(http.MethodGet, "/v1/cluster/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body ClusterStatus
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if len(body.Assignments) != 1 || body.Assignments[0].NodeID != "node-a" {
+		t.Fatalf("assignments = %#v", body.Assignments)
+	}
+	if len(body.Nodes) != 1 || body.Nodes[0].Health != string(member.HealthDead) {
+		t.Fatalf("nodes = %#v", body.Nodes)
+	}
+	if len(body.Tablets) != 1 || body.Tablets[0].State != string(ReplicaReady) || body.Tablets[0].LastCheckpoint != 42 {
+		t.Fatalf("tablets = %#v", body.Tablets)
+	}
+	if len(body.Checkpoints) != 1 || body.Checkpoints[0].Sequence != 42 {
+		t.Fatalf("checkpoints = %#v", body.Checkpoints)
+	}
+}
+
+func TestClusterStatusReplacesMovedReplicaOwnership(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+			State:     string(ReplicaReady),
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+			State:     string(ReplicaReady),
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/cluster/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body ClusterStatus
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if len(body.Assignments) != 1 || body.Assignments[0].NodeID != "node-b" {
+		t.Fatalf("assignments = %#v, want only moved node-b assignment", body.Assignments)
+	}
+	if len(body.Tablets) != 1 || body.Tablets[0].NodeID != "node-b" {
+		t.Fatalf("tablets = %#v, want only moved node-b tablet", body.Tablets)
+	}
+}
+
+func TestClusterStatusDropsDeletedIndexViews(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+			State:     string(ReplicaReady),
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindCheckpoint,
+		Checkpoint: &metadata.CheckpointRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			Sequence:  42,
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind:    metadata.EventKindIndex,
+		Deleted: true,
+		Index:   &metadata.IndexRecord{Name: "books"},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/cluster/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body ClusterStatus
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if len(body.Assignments) != 0 || len(body.Tablets) != 0 || len(body.Checkpoints) != 0 {
+		t.Fatalf("status = %#v, want no deleted index views", body)
+	}
+}
+
+func TestMetadataReplicaMoveReplacesStaleRoute(t *testing.T) {
+	t.Parallel()
+
+	oldClient := &fakeShardClient{err: errors.New("old node should not be routed")}
+	newClient := &fakeShardClient{result: ShardSearchResult{Total: 1, Hits: []SearchHit{{DocumentID: "doc-1", Score: 2}}}}
+	srv := NewServer(ServerConfig{
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: ReplicaReady, Client: oldClient},
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-b", State: ReplicaReady, Client: newClient},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 1)
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+			State:     string(ReplicaReady),
+		},
+	})
+
+	_, routes, ok := srv.indexRouteSnapshot("books")
+	if !ok {
+		t.Fatal("route snapshot was not available")
+	}
+	if len(routes) != 1 || routes[0].NodeID != "node-b" {
+		t.Fatalf("routes = %#v, want only node-b route", routes)
+	}
+}
+
+func TestReplicaMoveBackDoesNotReuseStaleReadyState(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", Client: &fakeShardClient{}},
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-b", Client: &fakeShardClient{}},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 1)
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+			State:     string(ReplicaReady),
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+			State:     string(ReplicaReady),
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+
+	_, routes, ok := srv.indexRouteSnapshot("books")
+	if !ok {
+		t.Fatal("route snapshot was not available")
+	}
+	if len(routes) != 0 {
+		t.Fatalf("routes = %#v, want no ready route until node-a reports after move-back", routes)
+	}
+}
+
+func TestClusterStatusDropsStaleTabletAfterReplicaMove(t *testing.T) {
+	t.Parallel()
+
+	srv := NewServer(ServerConfig{
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", Client: &fakeShardClient{}},
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-b", Client: &fakeShardClient{}},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 1)
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+			State:     string(ReplicaReady),
+		},
+	})
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindShardReplica,
+		ShardReplica: &metadata.ShardReplicaRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-b",
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/cluster/status", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body ClusterStatus
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if len(body.Assignments) != 1 || body.Assignments[0].NodeID != "node-b" {
+		t.Fatalf("assignments = %#v, want moved node-b assignment", body.Assignments)
+	}
+	if len(body.Tablets) != 0 {
+		t.Fatalf("tablets = %#v, want no tablet view until moved node reports status", body.Tablets)
 	}
 }
 

@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/cobeo2004/kitsune/internal/events"
+	"github.com/cobeo2004/kitsune/internal/member"
 	"github.com/cobeo2004/kitsune/internal/metadata"
+	clusterstatus "github.com/cobeo2004/kitsune/internal/status"
 )
 
 const (
@@ -34,6 +36,7 @@ type ServerConfig struct {
 	Routes           StaticRoutes
 	StaticConfig     StaticConfig
 	MetadataManager  metadata.KSMetadataManager
+	MemberCache      *member.Cache
 	EventBus         events.Bus
 }
 
@@ -48,7 +51,11 @@ type Server struct {
 	metadataManager  metadata.KSMetadataManager
 	eventBus         events.Bus
 	indexes          map[string]IndexInfo
-	tabletStatuses   map[assignmentKey]ReplicaState
+	tabletStatuses   map[assignmentKey]metadata.TabletStatusRecord
+	memberCache      *member.Cache
+	assignments      []clusterstatus.AssignmentView
+	tablets          []clusterstatus.TabletView
+	checkpoints      []clusterstatus.CheckpointView
 }
 
 // NewServer creates a KSCoordinator REST server.
@@ -66,13 +73,15 @@ func NewServer(cfg ServerConfig) *Server {
 	s := &Server{
 		mux:              http.NewServeMux(),
 		maxDocumentBytes: cfg.MaxDocumentBytes,
-		routes:           cfg.Routes,
-		routeClients:     cfg.Routes,
+		routes:           cloneStaticRoutes(cfg.Routes),
+		routeClients:     cloneStaticRoutes(cfg.Routes),
 		staticConfigured: len(cfg.StaticConfig.Indexes) > 0,
 		metadataManager:  cfg.MetadataManager,
+		memberCache:      cfg.MemberCache,
 		eventBus:         cfg.EventBus,
 		indexes:          make(map[string]IndexInfo),
-		tabletStatuses:   make(map[assignmentKey]ReplicaState),
+		tabletStatuses:   make(map[assignmentKey]metadata.TabletStatusRecord),
+		assignments:      assignmentsFromStaticConfig(cfg.StaticConfig),
 	}
 	for _, idx := range cfg.StaticConfig.Indexes {
 		s.indexes[idx.Name] = IndexInfo{
@@ -175,11 +184,17 @@ func (s *Server) applyMetadataSnapshot(snapshot metadata.Snapshot) {
 
 	tabletStatuses := statesFromMetadata(snapshot.TabletStatuses)
 	routes := routesFromMetadata(snapshot.ShardReplicas, snapshot.TabletStatuses, s.routeClients)
+	assignments := assignmentsFromMetadata(snapshot.ShardReplicas)
+	tablets := tabletsFromMetadata(snapshot.TabletStatuses)
+	checkpoints := checkpointsFromMetadata(snapshot.Checkpoints)
 
 	s.mu.Lock()
 	s.indexes = indexes
 	s.routes = routes
 	s.tabletStatuses = tabletStatuses
+	s.assignments = assignments
+	s.tablets = tablets
+	s.checkpoints = checkpoints
 	s.staticConfigured = true
 	s.mu.Unlock()
 }
@@ -196,6 +211,10 @@ func (s *Server) applyMetadataEvent(event metadata.WatchEvent) {
 		if event.Deleted {
 			delete(s.indexes, event.Index.Name)
 			delete(s.routes, event.Index.Name)
+			removeTabletStatusesForIndex(s.tabletStatuses, event.Index.Name)
+			s.assignments = removeAssignmentsForIndex(s.assignments, event.Index.Name)
+			s.tablets = removeTabletsForIndex(s.tablets, event.Index.Name)
+			s.checkpoints = removeCheckpointsForIndex(s.checkpoints, event.Index.Name)
 			return
 		}
 		s.indexes[event.Index.Name] = IndexInfo{
@@ -211,13 +230,17 @@ func (s *Server) applyMetadataEvent(event metadata.WatchEvent) {
 		}
 		if event.Deleted {
 			s.routes = removeRoute(s.routes, *event.ShardReplica)
+			s.assignments = removeAssignment(s.assignments, *event.ShardReplica)
 			return
 		}
+		s.assignments = upsertAssignment(s.assignments, assignmentFromMetadata(*event.ShardReplica))
 		if route, ok := routeForReplica(s.routeClients, *event.ShardReplica); ok {
-			key := routeAssignmentKey(event.ShardReplica.IndexName, event.ShardReplica.ShardID, event.ShardReplica.ReplicaID, event.ShardReplica.NodeID)
-			if state, ok := s.tabletStatuses[key]; ok {
-				route.State = state
+			key := routeAssignmentKey(event.ShardReplica.IndexName, event.ShardReplica.ShardID, event.ShardReplica.ReplicaID)
+			if status, ok := s.tabletStatuses[key]; ok && status.NodeID == route.NodeID {
+				route.State = ReplicaState(status.State)
 			} else {
+				delete(s.tabletStatuses, key)
+				s.tablets = removeTabletByAssignment(s.tablets, *event.ShardReplica)
 				route.State = ReplicaUnknown
 			}
 			s.routes = upsertRoute(s.routes, event.ShardReplica.IndexName, route)
@@ -227,14 +250,25 @@ func (s *Server) applyMetadataEvent(event metadata.WatchEvent) {
 			return
 		}
 		status := *event.TabletStatus
-		key := routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID, status.NodeID)
+		key := routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID)
 		if event.Deleted {
 			delete(s.tabletStatuses, key)
+			s.tablets = removeTablet(s.tablets, status)
 			status.State = string(ReplicaUnknown)
 		} else {
-			s.tabletStatuses[key] = ReplicaState(status.State)
+			s.tabletStatuses[key] = status
+			s.tablets = upsertTablet(s.tablets, tabletFromMetadata(status))
 		}
 		s.routes = updateRouteState(s.routes, status)
+	case metadata.EventKindCheckpoint:
+		if event.Checkpoint == nil {
+			return
+		}
+		if event.Deleted {
+			s.checkpoints = removeCheckpoint(s.checkpoints, *event.Checkpoint)
+			return
+		}
+		s.checkpoints = upsertCheckpoint(s.checkpoints, checkpointFromMetadata(*event.Checkpoint))
 	}
 }
 
@@ -296,12 +330,35 @@ func (s *Server) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	indexCount := len(s.indexes)
 	routeIndexes := len(s.routes)
+	assignments := append([]clusterstatus.AssignmentView(nil), s.assignments...)
+	tablets := append([]clusterstatus.TabletView(nil), s.tablets...)
+	checkpoints := append([]clusterstatus.CheckpointView(nil), s.checkpoints...)
+	var nodes []clusterstatus.NodeHealthView
+	if s.memberCache != nil {
+		for _, view := range s.memberCache.List() {
+			nodes = append(nodes, clusterstatus.NodeHealthView{
+				NodeID:      view.NodeID,
+				GRPCAddress: view.GRPCAddress,
+				Health:      string(view.Health),
+			})
+		}
+	}
 	s.mu.RUnlock()
+	cluster := clusterstatus.BuildClusterStatus(clusterstatus.Input{
+		Assignments: assignments,
+		Nodes:       nodes,
+		Tablets:     tablets,
+		Checkpoints: checkpoints,
+	})
 
 	writeJSON(w, http.StatusOK, ClusterStatus{
 		State:        "ready",
 		IndexCount:   indexCount,
 		RouteIndexes: routeIndexes,
+		Assignments:  cluster.Assignments,
+		Nodes:        cluster.Nodes,
+		Tablets:      cluster.Tablets,
+		Checkpoints:  cluster.Checkpoints,
 	})
 }
 
@@ -638,4 +695,186 @@ func sleepMetadataWatchRetry(ctx context.Context) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func assignmentsFromStaticConfig(cfg StaticConfig) []clusterstatus.AssignmentView {
+	assignments := make([]clusterstatus.AssignmentView, 0, len(cfg.Assignments))
+	for _, assignment := range cfg.Assignments {
+		assignments = append(assignments, clusterstatus.AssignmentView{
+			IndexName: assignment.IndexName,
+			ShardID:   assignment.ShardID,
+			ReplicaID: assignment.ReplicaID,
+			NodeID:    assignment.NodeID,
+		})
+	}
+	return assignments
+}
+
+func assignmentsFromMetadata(replicas []metadata.ShardReplicaRecord) []clusterstatus.AssignmentView {
+	assignments := make([]clusterstatus.AssignmentView, 0, len(replicas))
+	for _, replica := range replicas {
+		assignments = append(assignments, assignmentFromMetadata(replica))
+	}
+	return assignments
+}
+
+func assignmentFromMetadata(replica metadata.ShardReplicaRecord) clusterstatus.AssignmentView {
+	return clusterstatus.AssignmentView{
+		IndexName: replica.IndexName,
+		ShardID:   replica.ShardID,
+		ReplicaID: replica.ReplicaID,
+		NodeID:    replica.NodeID,
+	}
+}
+
+func tabletsFromMetadata(statuses []metadata.TabletStatusRecord) []clusterstatus.TabletView {
+	tablets := make([]clusterstatus.TabletView, 0, len(statuses))
+	for _, status := range statuses {
+		tablets = append(tablets, tabletFromMetadata(status))
+	}
+	return tablets
+}
+
+func tabletFromMetadata(status metadata.TabletStatusRecord) clusterstatus.TabletView {
+	return clusterstatus.TabletView{
+		IndexName:      status.IndexName,
+		ShardID:        status.ShardID,
+		ReplicaID:      status.ReplicaID,
+		NodeID:         status.NodeID,
+		State:          status.State,
+		LastCheckpoint: status.LastCheckpoint,
+	}
+}
+
+func checkpointsFromMetadata(checkpoints []metadata.CheckpointRecord) []clusterstatus.CheckpointView {
+	out := make([]clusterstatus.CheckpointView, 0, len(checkpoints))
+	for _, checkpoint := range checkpoints {
+		out = append(out, checkpointFromMetadata(checkpoint))
+	}
+	return out
+}
+
+func checkpointFromMetadata(checkpoint metadata.CheckpointRecord) clusterstatus.CheckpointView {
+	return clusterstatus.CheckpointView{
+		IndexName: checkpoint.IndexName,
+		ShardID:   checkpoint.ShardID,
+		ReplicaID: checkpoint.ReplicaID,
+		Sequence:  checkpoint.Sequence,
+		EventID:   checkpoint.EventID,
+	}
+}
+
+func upsertAssignment(assignments []clusterstatus.AssignmentView, next clusterstatus.AssignmentView) []clusterstatus.AssignmentView {
+	for i, current := range assignments {
+		if current.IndexName == next.IndexName && current.ShardID == next.ShardID && current.ReplicaID == next.ReplicaID {
+			assignments[i] = next
+			return assignments
+		}
+	}
+	return append(assignments, next)
+}
+
+func removeAssignment(assignments []clusterstatus.AssignmentView, replica metadata.ShardReplicaRecord) []clusterstatus.AssignmentView {
+	out := assignments[:0]
+	for _, current := range assignments {
+		if current.IndexName == replica.IndexName && current.ShardID == replica.ShardID && current.ReplicaID == replica.ReplicaID {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func removeAssignmentsForIndex(assignments []clusterstatus.AssignmentView, indexName string) []clusterstatus.AssignmentView {
+	out := assignments[:0]
+	for _, current := range assignments {
+		if current.IndexName == indexName {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func upsertTablet(tablets []clusterstatus.TabletView, next clusterstatus.TabletView) []clusterstatus.TabletView {
+	for i, current := range tablets {
+		if current.IndexName == next.IndexName && current.ShardID == next.ShardID && current.ReplicaID == next.ReplicaID {
+			tablets[i] = next
+			return tablets
+		}
+	}
+	return append(tablets, next)
+}
+
+func removeTablet(tablets []clusterstatus.TabletView, status metadata.TabletStatusRecord) []clusterstatus.TabletView {
+	out := tablets[:0]
+	for _, current := range tablets {
+		if current.IndexName == status.IndexName && current.ShardID == status.ShardID && current.ReplicaID == status.ReplicaID {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func removeTabletByAssignment(tablets []clusterstatus.TabletView, replica metadata.ShardReplicaRecord) []clusterstatus.TabletView {
+	out := tablets[:0]
+	for _, current := range tablets {
+		if current.IndexName == replica.IndexName && current.ShardID == replica.ShardID && current.ReplicaID == replica.ReplicaID {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func removeTabletsForIndex(tablets []clusterstatus.TabletView, indexName string) []clusterstatus.TabletView {
+	out := tablets[:0]
+	for _, current := range tablets {
+		if current.IndexName == indexName {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func removeTabletStatusesForIndex(statuses map[assignmentKey]metadata.TabletStatusRecord, indexName string) {
+	for key := range statuses {
+		if key.indexName == indexName {
+			delete(statuses, key)
+		}
+	}
+}
+
+func upsertCheckpoint(checkpoints []clusterstatus.CheckpointView, next clusterstatus.CheckpointView) []clusterstatus.CheckpointView {
+	for i, current := range checkpoints {
+		if current.IndexName == next.IndexName && current.ShardID == next.ShardID && current.ReplicaID == next.ReplicaID {
+			checkpoints[i] = next
+			return checkpoints
+		}
+	}
+	return append(checkpoints, next)
+}
+
+func removeCheckpoint(checkpoints []clusterstatus.CheckpointView, checkpoint metadata.CheckpointRecord) []clusterstatus.CheckpointView {
+	out := checkpoints[:0]
+	for _, current := range checkpoints {
+		if current.IndexName == checkpoint.IndexName && current.ShardID == checkpoint.ShardID && current.ReplicaID == checkpoint.ReplicaID {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
+}
+
+func removeCheckpointsForIndex(checkpoints []clusterstatus.CheckpointView, indexName string) []clusterstatus.CheckpointView {
+	out := checkpoints[:0]
+	for _, current := range checkpoints {
+		if current.IndexName == indexName {
+			continue
+		}
+		out = append(out, current)
+	}
+	return out
 }

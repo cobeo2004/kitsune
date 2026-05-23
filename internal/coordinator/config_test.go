@@ -122,6 +122,26 @@ func TestValidateStaticRoutesRejectsDelimiterCollision(t *testing.T) {
 	}
 }
 
+func TestValidateStaticRoutesRejectsWrongAssignedNode(t *testing.T) {
+	t.Parallel()
+
+	cfg := StaticConfig{
+		Indexes: []IndexConfig{
+			{Name: "books", ShardCount: 1, ReplicationFactor: 1},
+		},
+		Assignments: []ShardAssignment{
+			{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"},
+		},
+	}
+	routes := StaticRoutes{
+		"books": {{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-b", Client: &fakeShardClient{}}},
+	}
+
+	if err := validateRoutesAgainstStaticConfig(routes, cfg); err == nil {
+		t.Fatal("expected route with wrong assigned node to fail")
+	}
+}
+
 func TestNewServerLoadsStaticIndexMappingMetadata(t *testing.T) {
 	t.Parallel()
 

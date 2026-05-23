@@ -132,9 +132,9 @@ func validateRoutesAgainstStaticConfig(routes StaticRoutes, cfg StaticConfig) er
 		return nil
 	}
 
-	assignments := make(map[assignmentKey]struct{}, len(cfg.Assignments))
+	assignments := make(map[staticAssignmentKey]struct{}, len(cfg.Assignments))
 	for _, assignment := range cfg.Assignments {
-		assignments[routeAssignmentKey(assignment.IndexName, assignment.ShardID, assignment.ReplicaID, assignment.NodeID)] = struct{}{}
+		assignments[routeStaticAssignmentKey(assignment.IndexName, assignment.ShardID, assignment.ReplicaID, assignment.NodeID)] = struct{}{}
 	}
 
 	for indexName, indexRoutes := range routes {
@@ -148,7 +148,7 @@ func validateRoutesAgainstStaticConfig(routes StaticRoutes, cfg StaticConfig) er
 			if !isStaticIDSegment(route.NodeID) {
 				return fmt.Errorf("route for index %q shard %d node ID must be a single path segment", indexName, route.ShardID)
 			}
-			key := routeAssignmentKey(indexName, route.ShardID, route.ReplicaID, route.NodeID)
+			key := routeStaticAssignmentKey(indexName, route.ShardID, route.ReplicaID, route.NodeID)
 			if _, ok := assignments[key]; !ok {
 				return fmt.Errorf("route for index %q shard %d replica %q node %q has no static assignment", indexName, route.ShardID, route.ReplicaID, route.NodeID)
 			}
@@ -162,11 +162,25 @@ type assignmentKey struct {
 	indexName string
 	shardID   int
 	replicaID string
+}
+
+func routeAssignmentKey(indexName string, shardID int, replicaID string) assignmentKey {
+	return assignmentKey{
+		indexName: indexName,
+		shardID:   shardID,
+		replicaID: replicaID,
+	}
+}
+
+type staticAssignmentKey struct {
+	indexName string
+	shardID   int
+	replicaID string
 	nodeID    string
 }
 
-func routeAssignmentKey(indexName string, shardID int, replicaID, nodeID string) assignmentKey {
-	return assignmentKey{
+func routeStaticAssignmentKey(indexName string, shardID int, replicaID, nodeID string) staticAssignmentKey {
+	return staticAssignmentKey{
 		indexName: indexName,
 		shardID:   shardID,
 		replicaID: replicaID,
