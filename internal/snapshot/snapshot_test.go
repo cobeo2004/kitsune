@@ -138,6 +138,33 @@ func TestRestoreKeepsTargetNotReadyUntilReplayFinishes(t *testing.T) {
 	}
 }
 
+func TestNewMinIOStoreRequiresBucket(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewMinIOStore(MinIOConfig{
+		Endpoint:     "localhost:9000",
+		AccessKeyID:  "minio",
+		SecretAccess: "password",
+	})
+	if err == nil {
+		t.Fatal("expected missing bucket to fail")
+	}
+}
+
+func TestMinIOStoreObjectNames(t *testing.T) {
+	t.Parallel()
+
+	store := &MinIOStore{bucket: "kitsune"}
+	manifestObject, dataObject := store.objectNames("books", 2, 7)
+
+	if manifestObject != "snapshots/books/shard-2/generation-000007/manifest.json" {
+		t.Fatalf("manifest object = %q", manifestObject)
+	}
+	if dataObject != "snapshots/books/shard-2/generation-000007/snapshot.bin" {
+		t.Fatalf("data object = %q", dataObject)
+	}
+}
+
 type fakeRestoreTarget struct {
 	state RestoreState
 }
