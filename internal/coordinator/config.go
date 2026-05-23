@@ -7,31 +7,31 @@ import (
 
 // IndexConfig describes one logical index in static KSCoordinator config.
 type IndexConfig struct {
-	Name              string
-	ShardCount        int
-	ReplicationFactor int
-	MappingVersion    int
-	Mapping           map[string]any
+	Name              string         `yaml:"name"`
+	ShardCount        int            `yaml:"shardCount"`
+	ReplicationFactor int            `yaml:"replicationFactor"`
+	MappingVersion    int            `yaml:"mappingVersion"`
+	Mapping           map[string]any `yaml:"mapping"`
 }
 
 // ShardAssignment binds one shard replica to a KSSearchNode in static config.
 type ShardAssignment struct {
-	IndexName string
-	ShardID   int
-	ReplicaID string
-	NodeID    string
+	IndexName string `yaml:"indexName"`
+	ShardID   int    `yaml:"shardID"`
+	ReplicaID string `yaml:"replicaID"`
+	NodeID    string `yaml:"nodeID"`
 }
 
 // NodeConfig describes one search node available to static assignments.
 type NodeConfig struct {
-	NodeID string
+	NodeID string `yaml:"nodeID"`
 }
 
 // StaticConfig describes logical indexes and static shard replica assignments.
 type StaticConfig struct {
-	Indexes     []IndexConfig
-	Nodes       []NodeConfig
-	Assignments []ShardAssignment
+	Indexes     []IndexConfig     `yaml:"indexes"`
+	Nodes       []NodeConfig      `yaml:"nodes"`
+	Assignments []ShardAssignment `yaml:"assignments"`
 }
 
 // ValidateStaticConfig validates static index and shard replica assignments.
