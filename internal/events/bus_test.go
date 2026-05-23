@@ -51,7 +51,7 @@ func TestNATSBusPublishesJSONEventToShardSubject(t *testing.T) {
 	if err := bus.Publish(context.Background(), evt); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if pub.subject != "kitsune.index.books.shard.2.events" {
+	if pub.subject != "kitsune.index.Ym9va3M.shard.2.events" {
 		t.Fatalf("subject = %q", pub.subject)
 	}
 	if len(pub.opts) != 1 {
@@ -64,6 +64,19 @@ func TestNATSBusPublishesJSONEventToShardSubject(t *testing.T) {
 	}
 	if got.ID != "evt-1" || got.DocumentID != "doc-1" {
 		t.Fatalf("event payload = %#v", got)
+	}
+}
+
+func TestSubjectEncodesIndexNameAsSingleToken(t *testing.T) {
+	t.Parallel()
+
+	subject := Subject(DocumentEvent{IndexName: "books.en", ShardID: 2})
+
+	if subject == "kitsune.index.books.en.shard.2.events" {
+		t.Fatal("subject used raw dotted index name")
+	}
+	if got, want := subject, "kitsune.index.Ym9va3MuZW4.shard.2.events"; got != want {
+		t.Fatalf("subject = %q, want %q", got, want)
 	}
 }
 
@@ -82,6 +95,23 @@ func TestNATSBusReturnsPublishError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected publish error")
+	}
+}
+
+func TestNATSBusRejectsMissingPublisher(t *testing.T) {
+	t.Parallel()
+
+	bus := NewNATSBus(nil)
+	err := bus.Publish(context.Background(), DocumentEvent{
+		ID:         "evt-1",
+		Operation:  OperationUpsert,
+		IndexName:  "books",
+		ShardID:    0,
+		DocumentID: "doc-1",
+		Fields:     map[string]any{"title": "Bleve"},
+	})
+	if err == nil {
+		t.Fatal("expected missing publisher to fail")
 	}
 }
 

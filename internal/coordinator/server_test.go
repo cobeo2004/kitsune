@@ -173,6 +173,25 @@ func TestUpsertFailsWhenEventPublishFails(t *testing.T) {
 	}
 }
 
+func TestUpsertRejectsInvalidDocumentEventBeforePublish(t *testing.T) {
+	t.Parallel()
+
+	bus := events.NewMemoryBus()
+	srv := NewServer(ServerConfig{EventBus: bus})
+	createBooksIndex(t, srv, 1, 1)
+	req := httptest.NewRequest(http.MethodPut, "/v1/indexes/books/documents/doc-1", strings.NewReader(`{"fields":{}}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if got := bus.Events(); len(got) != 0 {
+		t.Fatalf("events len = %d, want 0", len(got))
+	}
+}
+
 func TestCreateIndexValidatesRequiredFields(t *testing.T) {
 	t.Parallel()
 

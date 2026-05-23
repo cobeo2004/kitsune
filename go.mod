@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/blevesearch/bleve/v2 v2.6.0
+	github.com/nats-io/nats.go v1.52.0
 	go.etcd.io/etcd/api/v3 v3.6.11
 	go.etcd.io/etcd/client/v3 v3.6.11
 	google.golang.org/grpc v1.81.1
@@ -40,7 +41,6 @@ require (
 	github.com/json-iterator/go v0.0.0-20171115153421-f7279a603ede // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
-	github.com/nats-io/nats.go v1.52.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	go.etcd.io/bbolt v1.4.0 // indirect

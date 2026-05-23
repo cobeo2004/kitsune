@@ -327,13 +327,13 @@ func (s *Server) handleUpsertDocument(w http.ResponseWriter, r *http.Request, in
 	if s.eventBus != nil {
 		fields := documentFields(payload)
 		evt := newDocumentEvent(info, documentID, fields)
+		if err := events.Validate(evt); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if err := s.eventBus.Publish(r.Context(), evt); err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				http.Error(w, err.Error(), http.StatusRequestTimeout)
-				return
-			}
-			if err := events.Validate(evt); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
 			http.Error(w, "publish document event: "+err.Error(), http.StatusBadGateway)

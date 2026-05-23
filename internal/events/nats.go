@@ -2,11 +2,15 @@ package events
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/nats-io/nats.go/jetstream"
 )
+
+var errPublisherRequired = errors.New("jetstream publisher is required")
 
 type jetStreamPublisher interface {
 	Publish(ctx context.Context, subject string, payload []byte, opts ...jetstream.PublishOpt) (*jetstream.PubAck, error)
@@ -24,6 +28,9 @@ func NewNATSBus(publisher jetStreamPublisher) *NATSBus {
 
 // Publish validates and publishes evt to its shard subject.
 func (b *NATSBus) Publish(ctx context.Context, evt DocumentEvent) error {
+	if b == nil || b.publisher == nil {
+		return errPublisherRequired
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -43,5 +50,9 @@ func (b *NATSBus) Publish(ctx context.Context, evt DocumentEvent) error {
 
 // Subject returns the JetStream subject for evt.
 func Subject(evt DocumentEvent) string {
-	return fmt.Sprintf("kitsune.index.%s.shard.%d.events", evt.IndexName, evt.ShardID)
+	return fmt.Sprintf("kitsune.index.%s.shard.%d.events", subjectToken(evt.IndexName), evt.ShardID)
+}
+
+func subjectToken(value string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(value))
 }
