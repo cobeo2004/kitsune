@@ -385,6 +385,54 @@ func TestSearchRoutesFromMetadataSnapshot(t *testing.T) {
 	}
 }
 
+func TestSearchRoutesFromMetadataSnapshotSkipsFailedTabletStatus(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	manager := metadata.NewMemoryManager()
+	if err := manager.PutIndex(ctx, metadata.IndexRecord{Name: "books", ShardCount: 1, ReplicationFactor: 2, MappingVersion: 1, Mapping: map[string]any{"defaultAnalyzer": "standard"}}, 0); err != nil {
+		t.Fatalf("put index: %v", err)
+	}
+	if err := manager.PutShardReplica(ctx, metadata.ShardReplicaRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a"}, 0); err != nil {
+		t.Fatalf("put shard replica a: %v", err)
+	}
+	if err := manager.PutShardReplica(ctx, metadata.ShardReplicaRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b"}, 0); err != nil {
+		t.Fatalf("put shard replica b: %v", err)
+	}
+	if err := manager.PutTabletStatus(ctx, metadata.TabletStatusRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: string(ReplicaFailed)}, 0); err != nil {
+		t.Fatalf("put tablet status a: %v", err)
+	}
+	if err := manager.PutTabletStatus(ctx, metadata.TabletStatusRecord{IndexName: "books", ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b", State: string(ReplicaReady)}, 0); err != nil {
+		t.Fatalf("put tablet status b: %v", err)
+	}
+
+	failedClient := &fakeShardClient{err: errors.New("failed replica was queried")}
+	readyClient := &fakeShardClient{result: ShardSearchResult{Total: 1, Hits: []SearchHit{{DocumentID: "doc-1", Score: 2}}}}
+	srv := NewServer(ServerConfig{
+		MetadataManager: manager,
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", Client: failedClient},
+				{ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b", Client: readyClient},
+			},
+		},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/indexes/books/search?q=bleve&limit=10", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if failedClient.calls != 0 {
+		t.Fatalf("failed client calls = %d, want 0", failedClient.calls)
+	}
+	if readyClient.calls != 1 {
+		t.Fatalf("ready client calls = %d, want 1", readyClient.calls)
+	}
+}
+
 func TestMetadataWatchRefreshesRouteCache(t *testing.T) {
 	t.Parallel()
 
@@ -495,6 +543,42 @@ func TestMetadataWatchRetriesAfterLoadFailure(t *testing.T) {
 		srv.ServeHTTP(rec, req)
 		return rec.Code == http.StatusOK
 	})
+}
+
+func TestApplyMetadataEventUpdatesRouteReplicaState(t *testing.T) {
+	t.Parallel()
+
+	failedClient := &fakeShardClient{}
+	readyClient := &fakeShardClient{}
+	srv := NewServer(ServerConfig{
+		EventBus: events.NewMemoryBus(),
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: ReplicaReady, Client: failedClient},
+				{ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b", State: ReplicaReady, Client: readyClient},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 2)
+
+	srv.applyMetadataEvent(metadata.WatchEvent{
+		Kind: metadata.EventKindTabletStatus,
+		TabletStatus: &metadata.TabletStatusRecord{
+			IndexName: "books",
+			ShardID:   0,
+			ReplicaID: "replica-a",
+			NodeID:    "node-a",
+			State:     string(ReplicaFailed),
+		},
+	})
+
+	_, routes, ok := srv.indexRouteSnapshot("books")
+	if !ok {
+		t.Fatal("route snapshot was not available")
+	}
+	if routes[0].ReplicaID != "replica-b" {
+		t.Fatalf("replica = %q, want replica-b", routes[0].ReplicaID)
+	}
 }
 
 func TestSearchUsesConsistentRouteSnapshot(t *testing.T) {
@@ -625,6 +709,37 @@ func TestSearchQueriesOneReplicaPerShard(t *testing.T) {
 	}
 	if secondReplica.calls != 0 {
 		t.Fatalf("second replica calls = %d, want 0", secondReplica.calls)
+	}
+}
+
+func TestSearchSkipsFailedReplicaWhenReadyReplicaExists(t *testing.T) {
+	t.Parallel()
+
+	failedReplica := &fakeShardClient{err: errors.New("failed replica was queried")}
+	readyReplica := &fakeShardClient{result: ShardSearchResult{Total: 1, Hits: []SearchHit{{DocumentID: "doc-1", Score: 2}}}}
+	srv := NewServer(ServerConfig{
+		EventBus: events.NewMemoryBus(),
+		Routes: StaticRoutes{
+			"books": {
+				{ShardID: 0, ReplicaID: "replica-a", NodeID: "node-a", State: ReplicaFailed, Client: failedReplica},
+				{ShardID: 0, ReplicaID: "replica-b", NodeID: "node-b", State: ReplicaReady, Client: readyReplica},
+			},
+		},
+	})
+	createBooksIndex(t, srv, 1, 2)
+	req := httptest.NewRequest(http.MethodGet, "/v1/indexes/books/search?q=bleve&limit=10", nil)
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if failedReplica.calls != 0 {
+		t.Fatalf("failed replica calls = %d, want 0", failedReplica.calls)
+	}
+	if readyReplica.calls != 1 {
+		t.Fatalf("ready replica calls = %d, want 1", readyReplica.calls)
 	}
 }
 
@@ -830,6 +945,7 @@ type fakeShardClient struct {
 	limit  int
 	offset int
 	calls  int
+	err    error
 }
 
 func (c *fakeShardClient) Search(ctx context.Context, query string, limit, offset int) (ShardSearchResult, error) {
@@ -837,6 +953,9 @@ func (c *fakeShardClient) Search(ctx context.Context, query string, limit, offse
 	c.query = query
 	c.limit = limit
 	c.offset = offset
+	if c.err != nil {
+		return ShardSearchResult{}, c.err
+	}
 	return c.result, nil
 }
 

@@ -16,6 +16,7 @@ type Route struct {
 	ShardID   int
 	ReplicaID string
 	NodeID    string
+	State     ReplicaState
 	Client    ShardClient
 }
 
@@ -35,37 +36,76 @@ func (r StaticRoutes) selectedRoutes(index string, shardCount int) ([]Route, boo
 		return nil, false
 	}
 
-	byShard := make(map[int]Route, shardCount)
+	byShard := make(map[int][]ReplicaCandidate, shardCount)
 	for _, route := range routes {
 		if route.ShardID < 0 || route.ShardID >= shardCount || route.Client == nil {
 			continue
 		}
-		if _, exists := byShard[route.ShardID]; !exists {
-			byShard[route.ShardID] = route
-		}
+		byShard[route.ShardID] = append(byShard[route.ShardID], route.replicaCandidate(index))
 	}
 
 	selected := make([]Route, 0, shardCount)
 	for shardID := 0; shardID < shardCount; shardID++ {
-		route, ok := byShard[shardID]
+		candidates, ok := byShard[shardID]
 		if !ok {
 			return nil, false
 		}
-		selected = append(selected, route)
+		candidate, err := SelectReplica(candidates)
+		if err != nil {
+			return nil, false
+		}
+		selected = append(selected, routeFromCandidate(candidate))
 	}
 	return selected, true
 }
 
-func routesFromMetadata(replicas []metadata.ShardReplicaRecord, clients StaticRoutes) StaticRoutes {
+func (r Route) replicaCandidate(indexName string) ReplicaCandidate {
+	state := r.State
+	if state == "" {
+		state = ReplicaReady
+	}
+	return ReplicaCandidate{
+		IndexName: indexName,
+		ShardID:   r.ShardID,
+		ReplicaID: r.ReplicaID,
+		NodeID:    r.NodeID,
+		State:     state,
+		Client:    r.Client,
+	}
+}
+
+func routeFromCandidate(candidate ReplicaCandidate) Route {
+	return Route{
+		ShardID:   candidate.ShardID,
+		ReplicaID: candidate.ReplicaID,
+		NodeID:    candidate.NodeID,
+		State:     candidate.State,
+		Client:    candidate.Client,
+	}
+}
+
+func routesFromMetadata(replicas []metadata.ShardReplicaRecord, statuses []metadata.TabletStatusRecord, clients StaticRoutes) StaticRoutes {
+	states := statesFromMetadata(statuses)
 	routes := make(StaticRoutes)
 	for _, replica := range replicas {
 		route, ok := routeForReplica(clients, replica)
 		if !ok {
 			continue
 		}
+		if state, ok := states[routeAssignmentKey(replica.IndexName, replica.ShardID, replica.ReplicaID, replica.NodeID)]; ok {
+			route.State = state
+		}
 		routes[replica.IndexName] = append(routes[replica.IndexName], route)
 	}
 	return routes
+}
+
+func statesFromMetadata(statuses []metadata.TabletStatusRecord) map[assignmentKey]ReplicaState {
+	states := make(map[assignmentKey]ReplicaState, len(statuses))
+	for _, status := range statuses {
+		states[routeAssignmentKey(status.IndexName, status.ShardID, status.ReplicaID, status.NodeID)] = ReplicaState(status.State)
+	}
+	return states
 }
 
 func routeForReplica(clients StaticRoutes, replica metadata.ShardReplicaRecord) (Route, bool) {
@@ -107,6 +147,18 @@ func removeRoute(routes StaticRoutes, replica metadata.ShardReplicaRecord) Stati
 		return routes
 	}
 	routes[replica.IndexName] = filtered
+	return routes
+}
+
+func updateRouteState(routes StaticRoutes, status metadata.TabletStatusRecord) StaticRoutes {
+	indexRoutes := routes.routesForIndex(status.IndexName)
+	for i, route := range indexRoutes {
+		if route.ShardID == status.ShardID && route.ReplicaID == status.ReplicaID && route.NodeID == status.NodeID {
+			indexRoutes[i].State = ReplicaState(status.State)
+			routes[status.IndexName] = indexRoutes
+			return routes
+		}
+	}
 	return routes
 }
 

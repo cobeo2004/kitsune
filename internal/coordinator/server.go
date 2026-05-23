@@ -171,7 +171,7 @@ func (s *Server) applyMetadataSnapshot(snapshot metadata.Snapshot) {
 		}
 	}
 
-	routes := routesFromMetadata(snapshot.ShardReplicas, s.routeClients)
+	routes := routesFromMetadata(snapshot.ShardReplicas, snapshot.TabletStatuses, s.routeClients)
 
 	s.mu.Lock()
 	s.indexes = indexes
@@ -212,6 +212,11 @@ func (s *Server) applyMetadataEvent(event metadata.WatchEvent) {
 		if route, ok := routeForReplica(s.routeClients, *event.ShardReplica); ok {
 			s.routes = upsertRoute(s.routes, event.ShardReplica.IndexName, route)
 		}
+	case metadata.EventKindTabletStatus:
+		if event.TabletStatus == nil {
+			return
+		}
+		s.routes = updateRouteState(s.routes, *event.TabletStatus)
 	}
 }
 
