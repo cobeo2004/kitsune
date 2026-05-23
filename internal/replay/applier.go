@@ -51,11 +51,15 @@ type Applier struct {
 	identity        Identity
 	tablet          Tablet
 	checkpointStore CheckpointStore
+	state           *stateTracker
 }
 
 // NewApplier creates an event applier for tb.
 func NewApplier(tb Tablet) *Applier {
-	return &Applier{tablet: tb}
+	return &Applier{
+		tablet: tb,
+		state:  newStateTracker(),
+	}
 }
 
 // NewShardApplier creates an event applier bound to one shard replica.
@@ -64,6 +68,7 @@ func NewShardApplier(id Identity, tb Tablet, checkpoints CheckpointStore) *Appli
 		identity:        id,
 		tablet:          tb,
 		checkpointStore: checkpoints,
+		state:           newStateTracker(),
 	}
 }
 
@@ -83,6 +88,9 @@ func (a *Applier) Apply(ctx context.Context, evt events.DocumentEvent) error {
 	if checkpoint.EventID != "" && evt.Sequence <= checkpoint.Sequence {
 		return nil
 	}
+	if a.state.stale(evt) {
+		return nil
+	}
 
 	switch evt.Operation {
 	case events.OperationUpsert:
@@ -99,6 +107,7 @@ func (a *Applier) Apply(ctx context.Context, evt events.DocumentEvent) error {
 		return err
 	}
 
+	a.state.record(evt)
 	return a.putCheckpoint(ctx, evt, checkpoint.Revision)
 }
 

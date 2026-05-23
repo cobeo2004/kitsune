@@ -60,6 +60,76 @@ func TestApplierAppliesDeleteEvent(t *testing.T) {
 	}
 }
 
+func TestOlderUpsertDoesNotResurrectNewerTombstone(t *testing.T) {
+	t.Parallel()
+
+	tb := &fakeTablet{}
+	applier := NewApplier(tb)
+
+	if err := applier.Apply(context.Background(), events.DocumentEvent{
+		ID:            "evt-2",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationDelete,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      2,
+	}); err != nil {
+		t.Fatalf("apply delete: %v", err)
+	}
+	if err := applier.Apply(context.Background(), events.DocumentEvent{
+		ID:            "evt-1",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      1,
+		Fields:        map[string]any{"title": "stale"},
+	}); err != nil {
+		t.Fatalf("apply stale upsert: %v", err)
+	}
+
+	if tb.upserts != 0 {
+		t.Fatalf("upserts = %d, want 0", tb.upserts)
+	}
+}
+
+func TestNewerUpsertAfterTombstoneRestoresDocument(t *testing.T) {
+	t.Parallel()
+
+	tb := &fakeTablet{}
+	applier := NewApplier(tb)
+
+	if err := applier.Apply(context.Background(), events.DocumentEvent{
+		ID:            "evt-2",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationDelete,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      2,
+	}); err != nil {
+		t.Fatalf("apply delete: %v", err)
+	}
+	if err := applier.Apply(context.Background(), events.DocumentEvent{
+		ID:            "evt-3",
+		SchemaVersion: events.CurrentSchemaVersion,
+		Operation:     events.OperationUpsert,
+		IndexName:     "books",
+		ShardID:       0,
+		DocumentID:    "doc-1",
+		Sequence:      3,
+		Fields:        map[string]any{"title": "fresh"},
+	}); err != nil {
+		t.Fatalf("apply newer upsert: %v", err)
+	}
+
+	if tb.upserts != 1 {
+		t.Fatalf("upserts = %d, want 1", tb.upserts)
+	}
+}
+
 func TestApplierRejectsInvalidEvent(t *testing.T) {
 	t.Parallel()
 
