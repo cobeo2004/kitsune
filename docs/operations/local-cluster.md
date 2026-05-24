@@ -24,8 +24,8 @@ Expected services:
 - `nats`
 - `minio`
 
-The app services define the intended local process topology. The current tree still needs `kitsune coordinator` and
-`kitsune search-node` binary wiring before this startup path is expected to be fully green.
+The app services define the local process topology. The `kitsune` binary exposes `coordinator` and `search-node`
+subcommands that load the YAML files under `deploy/local/config`.
 
 Planned startup command:
 
@@ -65,7 +65,7 @@ $COMPOSE start search-node-a
 ```
 
 The snapshot and failover commands are intentionally documented as pending because the current tree has the package
-primitives but not the operator CLI or search-node event-consumer loop needed to make those flows green.
+primitives and search-node event consumers, but not the operator CLI needed to drive those flows.
 
 Reset local state:
 
@@ -84,5 +84,6 @@ Runtime knobs live in `deploy/local/config/*.yaml`.
 | NATS URL | `nats://nats:4222` | `coordinator.yaml`, `search-node-*.yaml` |
 | NATS document stream | `KITSUNE_DOCUMENTS` over `kitsune.index.*.shard.*.events` | coordinator startup and direct smoke |
 | MinIO endpoint | `minio:9000` | `coordinator.yaml` |
+| MinIO bucket | `kitsune-snapshots` | `coordinator.yaml` |
 | MinIO credentials | `minioadmin` / `minioadmin` | `compose.yaml`, `coordinator.yaml` |
 | MinIO data path | `/data` | `compose.yaml` named volume |

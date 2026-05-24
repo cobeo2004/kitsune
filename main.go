@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -36,9 +38,18 @@ type coordinatorConfig struct {
 	HTTPAddress     string                   `yaml:"httpAddress"`
 	EtcdEndpoints   []string                 `yaml:"etcdEndpoints"`
 	NATSURL         string                   `yaml:"natsURL"`
+	MinIO           minIOConfig              `yaml:"minio"`
 	DocumentMaxByte int64                    `yaml:"documentMaxBytes"`
 	StaticConfig    coordinator.StaticConfig `yaml:"staticConfig"`
 	Routes          []routeConfig            `yaml:"routes"`
+}
+
+type minIOConfig struct {
+	Endpoint        string `yaml:"endpoint"`
+	Bucket          string `yaml:"bucket"`
+	AccessKeyID     string `yaml:"accessKey"`
+	SecretAccessKey string `yaml:"secretKey"`
+	Secure          bool   `yaml:"secure"`
 }
 
 type routeConfig struct {
@@ -288,7 +299,15 @@ func loadYAML(path string, out any) error {
 	if err != nil {
 		return fmt.Errorf("read config %q: %w", path, err)
 	}
-	if err := yaml.Unmarshal(data, out); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(out); err != nil {
+		return fmt.Errorf("decode config %q: %w", path, err)
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); err == nil {
+		return fmt.Errorf("decode config %q: multiple YAML documents are not supported", path)
+	} else if !errors.Is(err, io.EOF) {
 		return fmt.Errorf("decode config %q: %w", path, err)
 	}
 	return nil
