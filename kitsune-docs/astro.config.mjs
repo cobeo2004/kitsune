@@ -3,11 +3,11 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
 import vercel from '@astrojs/vercel';
-const site = process.env.VERCEL_URL ?? "http://localhost:4321";
+// const site = process.env.VERCEL_URL ?? "http://localhost:4321";
 
 // https://astro.build/config
 export default defineConfig({
-	site,
+	// site,
 	output: "static",
 	prefetch: {
 		prefetchAll: true,
