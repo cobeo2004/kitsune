@@ -1,0 +1,330 @@
+/* Map kitsune brand tokens onto Starlight's --sl-* variables. */
+
+:root {
+  /* Accent */
+  --sl-color-accent-low: var(--kt-sunshine-900);
+  --sl-color-accent: var(--kt-primary);
+  --sl-color-accent-high: var(--kt-cream);
+
+  /* Greyscale (light) */
+  --sl-color-white: var(--kt-ink);
+  --sl-color-gray-1: var(--kt-charcoal);
+  --sl-color-gray-2: var(--kt-slate);
+  --sl-color-gray-3: var(--kt-steel);
+  --sl-color-gray-4: var(--kt-stone);
+  --sl-color-gray-5: var(--kt-muted);
+  --sl-color-gray-6: var(--kt-hairline-strong);
+  --sl-color-gray-7: var(--kt-hairline);
+  --sl-color-black: var(--kt-canvas);
+
+  /* Backgrounds */
+  --sl-color-bg: var(--kt-canvas);
+  --sl-color-bg-nav: var(--kt-canvas);
+  --sl-color-bg-sidebar: var(--kt-surface-cream-soft);
+  --sl-color-bg-inline-code: var(--kt-cream-deeper);
+  --sl-color-bg-accent: var(--kt-primary);
+
+  /* Text */
+  --sl-color-text: var(--kt-ink);
+  --sl-color-text-accent: var(--kt-primary);
+  --sl-color-text-invert: var(--kt-on-primary);
+
+  /* Hairlines */
+  --sl-color-hairline: var(--kt-hairline);
+  --sl-color-hairline-light: var(--kt-hairline-soft);
+  --sl-color-hairline-shade: var(--kt-hairline-strong);
+
+  /* Fonts */
+  --sl-font: var(--kt-ui-font);
+  --sl-font-system: var(--kt-ui-font);
+  --sl-font-mono: var(--kt-mono-font);
+
+  /* Layout */
+  --sl-content-width: 50rem;
+  --sl-sidebar-width: 17.5rem;
+  --sl-nav-height: 4.5rem;
+  --sl-mobile-toc-height: 3rem;
+
+  /* Tighten Starlight's default heavy radii to our sober scale. */
+  --sl-shadow-md: rgba(0, 0, 0, 0.04) 0px 4px 12px 0px;
+}
+
+:root[data-theme='dark'] {
+  --sl-color-white: var(--kt-ink);
+  --sl-color-gray-1: var(--kt-ink-tint);
+  --sl-color-gray-2: var(--kt-charcoal);
+  --sl-color-gray-3: var(--kt-slate);
+  --sl-color-gray-4: var(--kt-steel);
+  --sl-color-gray-5: var(--kt-stone);
+  --sl-color-gray-6: var(--kt-hairline-strong);
+  --sl-color-gray-7: var(--kt-hairline);
+  --sl-color-black: var(--kt-canvas);
+
+  --sl-color-bg: var(--kt-canvas);
+  --sl-color-bg-nav: var(--kt-canvas);
+  --sl-color-bg-sidebar: #161410;
+  --sl-color-bg-inline-code: #2b2418;
+  --sl-color-text: var(--kt-ink);
+  --sl-color-text-accent: var(--kt-primary);
+  --sl-color-hairline: var(--kt-hairline);
+  --sl-color-hairline-light: var(--kt-hairline-soft);
+  --sl-color-hairline-shade: var(--kt-hairline-strong);
+}
+
+/* ---------- Global type ---------- */
+
+body {
+  font-family: var(--sl-font);
+  font-feature-settings: 'ss01', 'cv11';
+  letter-spacing: -0.005em;
+}
+
+/* Markdown headings: Inter for h2–h6, Fraunces for the page H1 (handled in PageTitle override). */
+.sl-markdown-content :is(h2, h3, h4, h5, h6) {
+  font-family: var(--sl-font);
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.sl-markdown-content h2 {
+  font-size: 2rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-top: var(--kt-space-section-sm);
+}
+
+.sl-markdown-content h3 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin-top: var(--kt-space-xxxl);
+}
+
+.sl-markdown-content :is(p, li) {
+  line-height: 1.6;
+}
+
+/* ---------- Sidebar (cream rail) ---------- */
+
+.sidebar-pane {
+  background: var(--sl-color-bg-sidebar);
+  border-inline-end: 1px solid var(--sl-color-hairline-light);
+}
+
+.sidebar-content a[aria-current='page'] {
+  background: var(--kt-cream);
+  color: var(--kt-ink);
+  border-radius: var(--kt-radius-md);
+  font-weight: 600;
+}
+
+:root[data-theme='dark'] .sidebar-content a[aria-current='page'] {
+  background: rgba(250, 80, 15, 0.16);
+  color: var(--kt-primary);
+}
+
+/* ---------- Code surfaces ---------- */
+
+.sl-markdown-content :not(pre) > code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: var(--kt-radius-sm);
+  background: var(--sl-color-bg-inline-code);
+  color: var(--kt-ink);
+}
+
+.expressive-code,
+.sl-markdown-content pre {
+  border-radius: var(--kt-radius-md) !important;
+  border: 1px solid var(--kt-hairline);
+}
+
+/* ---------- Asides → cream callouts ---------- */
+
+.starlight-aside {
+  border-radius: var(--kt-radius-lg);
+  border: 1px solid var(--kt-beige-deep);
+  background: var(--kt-cream);
+  color: var(--kt-on-cream);
+  padding: var(--kt-space-xl);
+}
+
+.starlight-aside--tip {
+  border-color: rgba(250, 80, 15, 0.35);
+}
+
+.starlight-aside--caution,
+.starlight-aside--danger {
+  border-color: var(--kt-primary);
+  background: var(--kt-cream-soft);
+}
+
+.starlight-aside__title {
+  font-family: var(--sl-font);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ---------- Tables (editorial treatment) ---------- */
+
+/* Wrap the table in a horizontally scrollable shell on small screens. */
+.sl-markdown-content table {
+  display: table;
+  width: 100%;
+  margin-block: var(--kt-space-xxl);
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--kt-hairline);
+  border-radius: var(--kt-radius-lg);
+  overflow: hidden;
+  background: var(--sl-color-bg);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  box-shadow: rgba(0, 0, 0, 0.03) 0px 4px 12px 0px;
+}
+
+/* Header row — small caps eyebrow on a cream wash. */
+.sl-markdown-content thead {
+  background: var(--kt-surface-cream-soft);
+}
+
+:root[data-theme='dark'] .sl-markdown-content thead {
+  background: rgba(250, 80, 15, 0.08);
+}
+
+.sl-markdown-content thead th {
+  font-family: var(--kt-ui-font);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--kt-steel);
+  text-align: start;
+  padding: 14px 20px;
+  border: 0;
+  border-bottom: 1px solid var(--kt-hairline);
+  white-space: nowrap;
+}
+
+:root[data-theme='dark'] .sl-markdown-content thead th {
+  color: var(--kt-stone);
+  border-bottom-color: var(--kt-hairline-strong);
+}
+
+/* Body cells — generous padding, hairline row dividers, no vertical lines. */
+.sl-markdown-content tbody td {
+  padding: 16px 20px;
+  border: 0;
+  border-top: 1px solid var(--kt-hairline-soft);
+  vertical-align: top;
+  color: var(--sl-color-text);
+}
+
+.sl-markdown-content tbody tr:first-child td {
+  border-top: 0;
+}
+
+/* Alternating rows: a whisper of cream on even rows for editorial rhythm. */
+.sl-markdown-content tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--kt-surface-cream-soft) 55%, transparent);
+}
+
+:root[data-theme='dark'] .sl-markdown-content tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+/* First column gets editorial emphasis — the row's anchor. */
+.sl-markdown-content tbody td:first-child {
+  font-weight: 600;
+  color: var(--kt-ink);
+  white-space: nowrap;
+}
+
+:root[data-theme='dark'] .sl-markdown-content tbody td:first-child {
+  color: var(--kt-ink);
+}
+
+/* Inline code inside table cells: tighter padding, no badge feel. */
+.sl-markdown-content tbody td > code,
+.sl-markdown-content tbody td code:not(pre code) {
+  font-size: 0.85em;
+  padding: 0.1em 0.4em;
+  background: var(--kt-cream-deeper);
+  color: var(--kt-ink);
+  border-radius: var(--kt-radius-xs);
+  white-space: nowrap;
+}
+
+:root[data-theme='dark'] .sl-markdown-content tbody td code:not(pre code) {
+  background: rgba(250, 80, 15, 0.16);
+  color: var(--kt-primary);
+}
+
+/* Right-align numeric-looking columns when authors mark them up that way. */
+.sl-markdown-content table th[align='right'],
+.sl-markdown-content table td[align='right'] {
+  text-align: end;
+}
+.sl-markdown-content table th[align='center'],
+.sl-markdown-content table td[align='center'] {
+  text-align: center;
+}
+
+/* Mobile: let wide tables scroll horizontally inside their own container. */
+@media (max-width: 50rem) {
+  .sl-markdown-content table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  .sl-markdown-content tbody td:first-child {
+    position: sticky;
+    inset-inline-start: 0;
+    background: var(--sl-color-bg);
+    box-shadow: 1px 0 0 var(--kt-hairline-soft);
+  }
+}
+
+/* ---------- Links ---------- */
+
+.sl-markdown-content a:not(.sl-link-button) {
+  color: var(--sl-color-text-accent);
+  text-decoration-color: rgba(250, 80, 15, 0.4);
+  text-underline-offset: 0.18em;
+}
+
+/* ---------- Action / link buttons ---------- */
+
+.sl-link-button {
+  border-radius: var(--kt-radius-md) !important;
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 0.625rem 1.25rem !important;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.sl-link-button.primary {
+  background: var(--kt-primary);
+  color: var(--kt-on-primary);
+  border: 1px solid var(--kt-primary);
+}
+
+.sl-link-button.primary:active {
+  background: var(--kt-primary-deep);
+}
+
+.sl-link-button.secondary,
+.sl-link-button.minimal {
+  background: transparent;
+  color: var(--sl-color-text);
+  border: 1px solid var(--kt-hairline-strong);
+}
+
+/* ---------- Pagination footer ---------- */
+
+.pagination-links a {
+  border-radius: var(--kt-radius-lg);
+  border-color: var(--kt-hairline);
+}

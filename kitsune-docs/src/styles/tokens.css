@@ -1,0 +1,122 @@
+/* Kitsune brand tokens — translated from DESIGN.md.
+   Concrete hex values approximate Mistral AI's published palette. */
+
+:root {
+  /* Brand & accent */
+  --kt-primary: #fa500f;
+  --kt-primary-deep: #d34508;
+  --kt-on-primary: #ffffff;
+
+  --kt-sunshine-300: #ffd89e;
+  --kt-sunshine-500: #ffb05e;
+  --kt-sunshine-700: #f08838;
+  --kt-sunshine-800: #e66f1f;
+  --kt-sunshine-900: #c84a05;
+  --kt-yellow-saturated: #ffd300;
+
+  /* Cream / neutral warm */
+  --kt-cream: #fbe9c9;
+  --kt-cream-soft: #fff4e0;
+  --kt-cream-deeper: #f4d9a6;
+  --kt-beige-deep: #e2c99b;
+  --kt-footer-cream: #faecd0;
+
+  /* Surface */
+  --kt-canvas: #ffffff;
+  --kt-surface: #fafaf7;
+  --kt-surface-cream: #fbf3e1;
+  --kt-surface-cream-soft: #fff8e8;
+  --kt-surface-code: #14130f;
+  --kt-hairline: #e5e1d8;
+  --kt-hairline-soft: #efece4;
+  --kt-hairline-strong: #d4cfc3;
+
+  /* Text (light) */
+  --kt-ink: #0e0e0e;
+  --kt-ink-tint: #1e1e1e;
+  --kt-charcoal: #2a2a28;
+  --kt-slate: #4a4a45;
+  --kt-steel: #6e6e66;
+  --kt-stone: #8e8e84;
+  --kt-muted: #b7b7ac;
+  --kt-on-dark: #ffffff;
+  --kt-on-dark-muted: rgba(255, 255, 255, 0.72);
+  --kt-on-cream: var(--kt-ink);
+
+  /* Type families */
+  --kt-display-font: 'Fraunces Variable', 'Fraunces', 'Times New Roman', Georgia, serif;
+  --kt-ui-font: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --kt-mono-font: 'JetBrains Mono Variable', 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Radii */
+  --kt-radius-xs: 4px;
+  --kt-radius-sm: 6px;
+  --kt-radius-md: 8px;
+  --kt-radius-lg: 12px;
+  --kt-radius-xl: 16px;
+  --kt-radius-xxl: 20px;
+  --kt-radius-full: 9999px;
+
+  /* Spacing scale (4px base) */
+  --kt-space-xxs: 4px;
+  --kt-space-xs: 8px;
+  --kt-space-sm: 12px;
+  --kt-space-md: 16px;
+  --kt-space-lg: 20px;
+  --kt-space-xl: 24px;
+  --kt-space-xxl: 32px;
+  --kt-space-xxxl: 40px;
+  --kt-space-section-sm: 48px;
+  --kt-space-section: 64px;
+  --kt-space-section-lg: 96px;
+  --kt-space-hero: 120px;
+
+  /* Sunset stripe gradient (the brand recognizer) */
+  --kt-sunset-stripe: linear-gradient(
+    90deg,
+    var(--kt-primary) 0%,
+    var(--kt-sunshine-700) 22%,
+    var(--kt-sunshine-500) 48%,
+    var(--kt-yellow-saturated) 72%,
+    var(--kt-cream) 100%
+  );
+
+  /* Atmospheric hero gradient */
+  --kt-hero-gradient:
+    radial-gradient(ellipse 70% 80% at 85% 15%, rgba(255, 211, 0, 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 70% at 15% 95%, rgba(200, 74, 5, 0.7) 0%, transparent 65%),
+    linear-gradient(135deg, var(--kt-sunshine-700) 0%, var(--kt-sunshine-900) 55%, var(--kt-primary) 100%);
+}
+
+/* Dark mode derives ink/charcoal surfaces but keeps the sunset accent. */
+:root[data-theme='dark'] {
+  --kt-canvas: #100f0d;
+  --kt-surface: #17161300;
+  --kt-surface: #18171420;
+  --kt-surface-cream: #1d1b16;
+  --kt-surface-cream-soft: #1f1d18;
+  --kt-surface-code: #0b0a08;
+
+  --kt-hairline: #2a2823;
+  --kt-hairline-soft: #211f1b;
+  --kt-hairline-strong: #3a3730;
+
+  --kt-cream: #2b2620;
+  --kt-cream-soft: #221f1a;
+  --kt-cream-deeper: #34291e;
+  --kt-beige-deep: #4a3e2e;
+  --kt-footer-cream: #18161200;
+
+  --kt-ink: #f6f1e4;
+  --kt-ink-tint: #eee7d6;
+  --kt-charcoal: #d6cfbe;
+  --kt-slate: #b7af9c;
+  --kt-steel: #8e8674;
+  --kt-stone: #6b6553;
+  --kt-muted: #4b4737;
+  --kt-on-cream: var(--kt-ink);
+
+  /* Accent stays saturated in dark mode; orange is the brand. */
+  --kt-primary: #ff6a2c;
+  --kt-primary-deep: #ff8a4c;
+}
