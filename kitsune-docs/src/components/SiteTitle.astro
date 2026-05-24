@@ -1,0 +1,19 @@
+---
+import { logos } from 'virtual:starlight/user-images';
+import config from 'virtual:starlight/user-config';
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="kt-site-title">
+  {config.logo && logos.dark && (
+    <img
+      class="kt-site-title__logo"
+      alt={config.logo.alt || siteTitle}
+      src={logos.dark.src}
+      width={logos.dark.width}
+      height={logos.dark.height}
+    />
+  )}
+  <span class="kt-site-title__wordmark" translate="no">KITSUNE</span>
+  <span class="sr-only">{siteTitle}</span>
+</a>

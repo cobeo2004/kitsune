@@ -1,0 +1,51 @@
+---
+import { Image } from 'astro:assets';
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, image, actions = [] } = data.hero || {};
+
+let heroImage: ImageMetadata | undefined;
+if (image && 'file' in image) {
+  heroImage = image.file;
+} else if (image && 'dark' in image) {
+  heroImage = image.dark;
+}
+---
+
+<section class="kt-hero" aria-labelledby="_top">
+  <div class="kt-hero__inner">
+    <div class="kt-hero__copy">
+      <p class="kt-hero__eyebrow">Distributed search · Built on Bleve</p>
+      <h1 id="_top" class="kt-hero__headline" set:html={title} />
+      {tagline && <p class="kt-hero__tagline" set:html={tagline} />}
+      {actions.length > 0 && (
+        <div class="kt-hero__actions">
+          {actions.map(({ link, text, variant }) => (
+            <a
+              href={link}
+              class:list={[
+                'kt-btn',
+                variant === 'primary' ? 'kt-btn--dark' : 'kt-btn--outline',
+              ]}
+            >
+              {text}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+
+    <div class="kt-hero__art" aria-hidden="true">
+      {heroImage && (
+        <Image
+          src={heroImage}
+          alt=""
+          width={320}
+          height={320}
+          loading="eager"
+          decoding="async"
+        />
+      )}
+    </div>
+  </div>
+</section>
