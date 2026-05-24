@@ -6,14 +6,19 @@ Kitsune is a Go distributed search engine built around Bleve shard replicas. It 
 
 ## Documentation
 
-The full documentation lives in the Astro Starlight-ready docs site under `kitsune-docs/src/content/docs`.
+The full documentation is available in two Markdown forms:
 
-- Start here: `kitsune-docs/src/content/docs/index.md`
-- Architecture: `kitsune-docs/src/content/docs/architecture.md`
-- Usage: `kitsune-docs/src/content/docs/usage.md`
-- Components: `kitsune-docs/src/content/docs/components.md`
-- Technical decisions: `kitsune-docs/src/content/docs/technical-decisions.md`
-- Roadmap: `kitsune-docs/src/content/docs/roadmap.md`
+- Repository docs: `docs/documentation/index.md`
+- Astro Starlight source: `kitsune-docs/src/content/docs/index.md`
+
+Repository Markdown pages:
+
+- Overview: `docs/documentation/index.md`
+- Architecture: `docs/documentation/architecture.md`
+- Usage: `docs/documentation/usage.md`
+- Components: `docs/documentation/components.md`
+- Technical decisions: `docs/documentation/technical-decisions.md`
+- Roadmap: `docs/documentation/roadmap.md`
 
 Run the docs site:
 
@@ -136,4 +141,4 @@ The implementation is intentionally milestone-driven. Start with:
 - Detailed specs: `docs/superpowers/specs`
 - Execution plans: `docs/superpowers/plans`
 
-The root docs under `docs/` are planning and requirements artifacts. The Starlight docs under `kitsune-docs/src/content/docs/` are the human-facing documentation set intended for publishing.
+The root docs under `docs/` contain planning artifacts plus the repository-native documentation copy. The Starlight docs under `kitsune-docs/src/content/docs/` are the publishing source for the docs site.
