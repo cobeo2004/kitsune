@@ -3,6 +3,8 @@
 Operating notes for autonomous agents and subagents working in this repository. The authoritative product spec is **@docs/prd/prd-kitsune-distributed-search-engine.md** — treat it as the contract for every change.
 
 For Claude Code session setup (commands, current state, component vocabulary, architecture rules), see **@CLAUDE.md**. This file focuses on agent-specific behavior.
+## Frontend design
+- For frontend design concepts, including layouts, themes, fonts, etc., always follow @DESIGN.md
 
 ## Identity
 

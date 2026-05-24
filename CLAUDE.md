@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Frontend design
+- For frontend design concepts, including layouts, themes, fonts, etc., always follow @DESIGN.md
+
 ## Project
 
 **Kitsune** is a Go-based distributed search engine. Local per-shard indexing is delegated to **Bleve** — Kitsune does **not** implement its own inverted index, tokenizer, ranker, prefix search, or typo tolerance. The system layers sharding, replication, metadata, event replay, snapshots, and recovery on top of Bleve.
