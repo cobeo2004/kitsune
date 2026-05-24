@@ -2,22 +2,28 @@
 
 ![Kitsune logo](docs/assets/kitsune-logo.png)
 
-Kitsune is a Go distributed search engine built around Bleve shard replicas. The project is being implemented from the product roadmap in `docs/roadmaps` and the milestone plans in `docs/superpowers/plans`.
+Kitsune is a Go distributed search engine built around Bleve shard replicas. It is intentionally small enough to study, but shaped like a real distributed search system: REST writes and searches at the coordinator, gRPC fan-out to search nodes, etcd metadata, NATS JetStream replay, S3-compatible snapshots, and advisory gossip health.
 
 ![Kitsune distributed search architecture](docs/prd/assets/distribuited_search_engine_architecture_diagram.png)
 
-## Architecture
+## Documentation
 
-Kitsune splits each logical index into fixed shards. Each shard is hosted by one or more `KSTablet` replicas on search nodes. A `KSCoordinator` receives client requests, keeps an in-memory shard route cache from metadata, fans search out to one healthy replica per shard over gRPC, and merges shard results into one response.
+The full documentation lives in the Astro Starlight-ready docs site under `kitsune-docs/src/content/docs`.
 
-Core components:
+- Start here: `kitsune-docs/src/content/docs/index.md`
+- Architecture: `kitsune-docs/src/content/docs/architecture.md`
+- Usage: `kitsune-docs/src/content/docs/usage.md`
+- Components: `kitsune-docs/src/content/docs/components.md`
+- Technical decisions: `kitsune-docs/src/content/docs/technical-decisions.md`
+- Roadmap: `kitsune-docs/src/content/docs/roadmap.md`
 
-- `KSTablet`: one local Bleve index for one shard replica.
-- `KSSearchNode`: hosts tablets and exposes internal gRPC search APIs.
-- `KSCoordinator`: REST entrypoint for index management, document writes, search, and cluster status.
-- `KSMetadataManager`: etcd-first metadata interface for indexes, routes, tablet state, checkpoints, and snapshot pointers.
-- `KSEventBus`: NATS JetStream document events for eventually consistent indexing.
-- `KSSnapshotStore`: S3-compatible storage for shard snapshots and replica bootstrap.
+Run the docs site:
+
+```powershell
+cd kitsune-docs
+npm install
+npm run dev
+```
 
 ## Current Implementation
 
@@ -32,35 +38,96 @@ The current codebase contains the first distributed-search slices:
 - Tombstone-aware replay ordering and compaction-safe checkpoint evidence.
 - Compressed snapshot packaging, checksum verification, S3-compatible storage, and trusted restore boundaries.
 - HashiCorp memberlist advisory health cache surfaced through cluster status.
+- Docker Compose wiring for a local coordinator, three search nodes, etcd, NATS, and local S3-compatible object storage.
 
 Search is eventually consistent. A coordinator document write is accepted after the document event is published. The replay applier validates shard identity, applies events to tablets, acknowledges messages after successful apply, and persists checkpoints. Gossip health is advisory only; shard ownership and tablet readiness stay anchored in metadata.
 
-## Development
+## Quick Start
 
-Run the full test suite:
-
-```powershell
-go test ./...
-```
-
-Run the currently focused packages:
+Build and test the repository:
 
 ```powershell
-go test ./internal/tablet ./internal/searchnode ./internal/coordinator ./internal/metadata ./internal/events ./internal/replay ./internal/snapshot ./internal/member ./internal/status
-```
-
-Format and vet before committing:
-
-```powershell
-gofmt -w .
+go test ./... -count=1
 go vet ./...
 ```
 
-The local race test currently requires cgo and a C compiler on Windows. Install GCC or use a Go environment with cgo support before running:
+Validate the local Compose model:
 
 ```powershell
-go test -race ./...
+docker compose -f deploy/local/compose.yaml config
 ```
+
+Start a local cluster when Docker is available:
+
+```powershell
+docker compose -f deploy/local/compose.yaml up --build
+```
+
+Exercise the REST path:
+
+```powershell
+go run ./scripts/smoke/localcluster
+```
+
+Exercise direct NATS publication:
+
+```powershell
+go run ./scripts/smoke/directnats
+```
+
+## API Preview
+
+Create an index:
+
+```http
+POST /v1/indexes
+Content-Type: application/json
+
+{
+  "name": "books",
+  "shardCount": 3,
+  "replicationFactor": 2,
+  "mappingVersion": 1,
+  "mapping": { "defaultAnalyzer": "standard" }
+}
+```
+
+Upsert a document:
+
+```http
+PUT /v1/indexes/books/documents/doc-1
+Content-Type: application/json
+
+{ "title": "Bleve distributed search" }
+```
+
+Search:
+
+```http
+GET /v1/indexes/books/search?q=Bleve&limit=10
+```
+
+Inspect cluster status:
+
+```http
+GET /v1/cluster/status
+```
+
+## Project Map
+
+- `main.go`: `kitsune coordinator` and `kitsune search-node` process entrypoints.
+- `api/searchnode/v1`: internal gRPC search-node service API.
+- `internal/tablet`: local Bleve-backed shard replica.
+- `internal/searchnode`: tablet host and gRPC server boundary.
+- `internal/coordinator`: REST API, routing, search fan-out, merge, and status surface.
+- `internal/metadata`: in-memory and etcd metadata managers.
+- `internal/events`: document-event schema and NATS JetStream publisher.
+- `internal/replay`: shard replay and checkpoint application.
+- `internal/snapshot`: compressed snapshots, restore, filesystem store, and S3-compatible store.
+- `internal/compaction`: tombstone compaction safety checks.
+- `internal/member`: memberlist-backed advisory node health.
+- `deploy/local`: local Compose topology and runtime YAML knobs.
+- `scripts/smoke`: local cluster and direct NATS smoke programs.
 
 ## Roadmap
 
@@ -70,3 +137,5 @@ The implementation is intentionally milestone-driven. Start with:
 - Roadmap index: `docs/roadmaps/index.md`
 - Detailed specs: `docs/superpowers/specs`
 - Execution plans: `docs/superpowers/plans`
+
+The root docs under `docs/` are planning and requirements artifacts. The Starlight docs under `kitsune-docs/src/content/docs/` are the human-facing documentation set intended for publishing.
