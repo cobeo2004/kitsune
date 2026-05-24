@@ -1,18 +1,23 @@
 ---
-title: Kitsune Overview
-description: Start here for the Kitsune distributed search engine architecture, usage, and roadmap.
+title: Frontier search. In your shards.
+description: A Go distributed search engine that uses Bleve for local indexing, NATS JetStream for replay, etcd for metadata, and S3-compatible snapshots for recovery.
+template: splash
+hero:
+  tagline: A Go distributed search engine built on Bleve, NATS JetStream, etcd, and S3-compatible snapshots — sober distributed-systems plumbing wrapped around a local full-text core.
+  image:
+    file: ../../assets/kitsune-logo.png
+    alt: Kitsune
+  actions:
+    - text: Read the architecture
+      link: /architecture/
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/cobeo2004/kitsune
+      variant: secondary
 sidebar:
   label: Overview
   order: 1
 ---
-
-# Kitsune
-
-![Kitsune logo](/assets/kitsune-logo.png)
-
-Kitsune is a Go distributed search engine that uses Bleve as the local search engine inside each shard replica. The project keeps the full-text search core local and focused while adding distributed-system boundaries around it: routing, replication, metadata, durable event replay, snapshots, and cluster status.
-
-![Kitsune distributed search architecture](/assets/distributed-search-architecture.png)
 
 ## What Kitsune Provides
 
@@ -32,6 +37,8 @@ Kitsune is a Go distributed search engine that uses Bleve as the local search en
 Kitsune is eventually consistent. A write through the coordinator succeeds after the document event is accepted by the event bus. Search nodes consume shard-specific events, apply them to local Bleve tablets, acknowledge only after a successful apply, and publish checkpoint evidence through metadata.
 
 Search routes use metadata and tablet readiness. Memberlist health is advisory and does not replace metadata ownership.
+
+![Kitsune distributed search architecture](/assets/distributed-search-architecture.png)
 
 ## Documentation Map
 
