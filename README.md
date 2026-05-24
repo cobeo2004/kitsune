@@ -1,6 +1,4 @@
-# Kitsune
-
-![Kitsune logo](docs/assets/kitsune-logo.png)
+# Kitsune <img src="docs/assets/kitsune-logo.png" style="width: 50px; height: 50px;"></img> 
 
 Kitsune is a Go distributed search engine built around Bleve shard replicas. It is intentionally small enough to study, but shaped like a real distributed search system: REST writes and searches at the coordinator, gRPC fan-out to search nodes, etcd metadata, NATS JetStream replay, S3-compatible snapshots, and advisory gossip health.
 
