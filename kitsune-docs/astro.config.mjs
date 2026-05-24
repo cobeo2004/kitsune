@@ -6,19 +6,20 @@ import starlight from '@astrojs/starlight';
 export default defineConfig({
 	integrations: [
 		starlight({
-			title: 'My Docs',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/withastro/starlight' }],
+			title: 'Kitsune Docs',
+			description: 'Architecture, usage, components, and roadmap for the Kitsune distributed search engine.',
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/cobeo2004/kitsune' }],
 			sidebar: [
 				{
-					label: 'Guides',
+					label: 'Kitsune',
 					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Example Guide', slug: 'guides/example' },
+						{ label: 'Overview', slug: '' },
+						{ label: 'Architecture', slug: 'architecture' },
+						{ label: 'Usage', slug: 'usage' },
+						{ label: 'Components', slug: 'components' },
+						{ label: 'Technical Decisions', slug: 'technical-decisions' },
+						{ label: 'Roadmap', slug: 'roadmap' },
 					],
-				},
-				{
-					label: 'Reference',
-					items: [{ autogenerate: { directory: 'reference' } }],
 				},
 			],
 		}),

@@ -1,39 +1,14 @@
-# Starlight Starter Kit: Basics
+# Kitsune Docs
 
 [![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-```
-npm create astro@latest -- --template starlight
-```
+This is the Astro Starlight documentation site for Kitsune.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+The source pages live in `src/content/docs`. Each page uses Starlight-compatible frontmatter with `title`, `description`, and `sidebar` metadata so the docs can be reorganized or published without rewriting content.
 
-## 🚀 Project Structure
+## Commands
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
-
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
-```
-
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
-
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
-
-Static assets, like favicons, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
+Run commands from `kitsune-docs`:
 
 | Command                   | Action                                           |
 | :------------------------ | :----------------------------------------------- |
@@ -44,6 +19,13 @@ All commands are run from the root of the project, from a terminal:
 | `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
 | `npm run astro -- --help` | Get help using the Astro CLI                     |
 
-## 👀 Want to learn more?
+## Content Map
 
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+- `src/content/docs/index.md`: project overview.
+- `src/content/docs/architecture.md`: distributed architecture and request flows.
+- `src/content/docs/usage.md`: local development and API usage.
+- `src/content/docs/components.md`: component responsibilities.
+- `src/content/docs/technical-decisions.md`: durable design decisions and rejected alternatives.
+- `src/content/docs/roadmap.md`: milestone and future roadmap.
+
+Static images used by the docs live in `public/assets`.
