@@ -32,7 +32,7 @@ go test ./...
 go vet ./...
 ```
 
-A Docker Compose dev environment (etcd, nats, minio, ks-coordinator, ks-node-a/b/c) is part of the planned developer experience — see PRD §7.3 — but is not yet present.
+A Docker Compose dev environment is defined in `deploy/local/compose.yaml` with local operations documented in `docs/operations/local-cluster.md`.
 
 ## Component vocabulary
 
@@ -46,7 +46,7 @@ Use these names exactly when writing code, tests, configs, and docs (PRD §7.2):
 | `KSMetadataManager` | Metadata, leases, locks, shard map (etcd first, Consul later) |
 | `KSMemberManager` | HashiCorp memberlist gossip membership |
 | `KSEventBus` | NATS JetStream document events |
-| `KSSnapshotStore` | S3/MinIO snapshot storage |
+| `KSSnapshotStore` | S3-compatible object storage snapshot storage |
 
 ## Architecture rules (non-negotiable)
 
@@ -56,7 +56,7 @@ These rules are load-bearing for the design and must not be relaxed without upda
 2. **`KSCoordinator` must not open or modify local Bleve files.** It only routes, fans out gRPC search, merges results, and publishes write events to NATS. See PRD §5.2 (#19).
 3. **`KSMetadataManager` is an interface; the first impl is etcd.** Do not couple call sites to etcd types — design so a Consul impl can drop in later. See PRD §5.10 and §8.4.
 4. **Authoritative shard ownership lives in `KSMetadataManager`, not in gossip.** Memberlist is advisory only. See PRD §5.11.
-5. **S3/MinIO is never on the hot query path.** Snapshots are for backup, restore, and replica bootstrap only. See PRD §5.12 (#131–132), §8.6.
+5. **S3-compatible object storage is never on the hot query path.** Snapshots are for backup, restore, and replica bootstrap only. See PRD §5.12 (#131–132), §8.6.
 6. **Replicas synchronize via event replay + snapshots, not by replicating raw Bleve files through Raft/etcd.** See PRD §5.14 (#145–146).
 7. **Consistency model is eventual.** Writes accepted on NATS publish; coordinator routes only to `ready` replicas. See PRD §8.5.
 8. **Document shard assignment is deterministic:** `shard_id = hash(document_id) % shard_count`. Shard count is fixed after index creation for the MVP. See PRD §5.5 (#51–52).
@@ -71,7 +71,7 @@ Junior-developer path defined in PRD §11. Follow it — do not jump ahead to fa
 4. etcd metadata for index and shard assignment.
 5. Multiple nodes, routing by shard map.
 6. NATS JetStream document events + replica consumption.
-7. S3/MinIO snapshot upload, restore, replay.
+7. S3-compatible object storage snapshot upload, restore, replay.
 8. Memberlist gossip, cluster status, metrics.
 
 ## Out of scope (do not build)

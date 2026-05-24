@@ -5,9 +5,13 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
 
-	"github.com/minio/minio-go/v7"
+	"github.com/aws/smithy-go"
 )
 
 func TestManifestRequiresChecksum(t *testing.T) {
@@ -417,23 +421,43 @@ func TestRestoreDecompressesSnapshotBeforeTargetRestore(t *testing.T) {
 	}
 }
 
-func TestNewMinIOStoreRequiresBucket(t *testing.T) {
+func TestNewS3StoreRequiresBucket(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewMinIOStore(MinIOConfig{
-		Endpoint:     "localhost:9000",
-		AccessKeyID:  "minio",
-		SecretAccess: "password",
-	})
+	_, err := NewS3Store(context.Background(), S3Config{})
 	if err == nil {
 		t.Fatal("expected missing bucket to fail")
 	}
 }
 
-func TestMinIOStoreObjectNames(t *testing.T) {
+func TestNewS3StoreAllowsDefaultAWSEndpointAndCredentials(t *testing.T) {
 	t.Parallel()
 
-	store := &MinIOStore{bucket: "kitsune"}
+	_, err := NewS3Store(context.Background(), S3Config{
+		Bucket: "kitsune",
+		Region: "ap-southeast-2",
+	})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+}
+
+func TestNewS3StoreRejectsPartialStaticCredentials(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewS3Store(context.Background(), S3Config{
+		Bucket:      "kitsune",
+		AccessKeyID: "access-key",
+	})
+	if err == nil {
+		t.Fatal("expected partial static credentials to fail")
+	}
+}
+
+func TestS3StoreObjectNames(t *testing.T) {
+	t.Parallel()
+
+	store := &S3Store{bucket: "kitsune"}
 	manifestObject, dataObject := store.objectNames("books", 2, "node-a", 7)
 
 	if manifestObject != "snapshots/books/shard-2/node-a/generation-000007/manifest.json" {
@@ -444,11 +468,108 @@ func TestMinIOStoreObjectNames(t *testing.T) {
 	}
 }
 
-func TestMinIOStorePutStoresDataThenManifest(t *testing.T) {
+func TestS3EndpointPreservesExplicitScheme(t *testing.T) {
+	t.Parallel()
+
+	got := s3Endpoint(S3Config{Endpoint: "https://s3.example.test", Secure: false})
+	if got != "https://s3.example.test" {
+		t.Fatalf("endpoint = %q, want explicit endpoint unchanged", got)
+	}
+}
+
+func TestS3ObjectNotFoundMapsCommonS3ErrorCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		code string
+	}{
+		{name: "get object", code: "NoSuchKey"},
+		{name: "head object", code: "NotFound"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &smithy.GenericAPIError{Code: tt.code}
+			if !isObjectNotFound(err) {
+				t.Fatalf("code %q was not mapped to object not found", tt.code)
+			}
+		})
+	}
+}
+
+func TestS3StoreRoundTripThroughAWSSDKClient(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu      sync.Mutex
+		objects = make(map[string][]byte)
+		paths   []string
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		paths = append(paths, r.URL.Path)
+
+		switch r.Method {
+		case http.MethodPut:
+			data, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read body: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			objects[strings.TrimPrefix(r.URL.Path, "/kitsune/")] = data
+		case http.MethodHead:
+			if _, ok := objects[strings.TrimPrefix(r.URL.Path, "/kitsune/")]; !ok {
+				w.WriteHeader(http.StatusNotFound)
+			}
+		case http.MethodGet:
+			data, ok := objects[strings.TrimPrefix(r.URL.Path, "/kitsune/")]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			if _, err := w.Write(data); err != nil {
+				t.Errorf("write body: %v", err)
+			}
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+	defer server.Close()
+
+	store, err := NewS3Store(context.Background(), S3Config{
+		Endpoint:     server.URL,
+		Bucket:       "kitsune",
+		AccessKeyID:  "access-key",
+		SecretAccess: "secret-key",
+	})
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	data := []byte("snapshot")
+	manifest := validManifest(data)
+
+	if err := store.Put(context.Background(), manifest, data); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	gotManifest, gotData, err := store.Get(context.Background(), "books", 0, "node-a", 3)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if gotManifest.ChecksumSHA256 != manifest.ChecksumSHA256 || !bytes.Equal(gotData, data) {
+		t.Fatalf("snapshot = %#v %q, want %#v %q", gotManifest, gotData, manifest, data)
+	}
+	if len(paths) == 0 || !strings.HasPrefix(paths[0], "/kitsune/") {
+		t.Fatalf("paths = %v, want path-style bucket prefix", paths)
+	}
+}
+
+func TestS3StorePutStoresDataThenManifest(t *testing.T) {
 	t.Parallel()
 
 	client := &fakeObjectClient{}
-	store := &MinIOStore{client: client, bucket: "kitsune"}
+	store := &S3Store{client: client, bucket: "kitsune"}
 	data := []byte("snapshot")
 	manifest := Manifest{
 		IndexName:          "books",
@@ -476,11 +597,11 @@ func TestMinIOStorePutStoresDataThenManifest(t *testing.T) {
 	}
 }
 
-func TestMinIOStoreGetMapsMissingObjectToSnapshotNotFound(t *testing.T) {
+func TestS3StoreGetMapsMissingObjectToSnapshotNotFound(t *testing.T) {
 	t.Parallel()
 
 	client := &fakeObjectClient{err: ErrSnapshotNotFound}
-	store := &MinIOStore{client: client, bucket: "kitsune"}
+	store := &S3Store{client: client, bucket: "kitsune"}
 
 	_, _, err := store.Get(context.Background(), "books", 0, "node-a", 7)
 	if !errors.Is(err, ErrSnapshotNotFound) {
@@ -488,13 +609,13 @@ func TestMinIOStoreGetMapsMissingObjectToSnapshotNotFound(t *testing.T) {
 	}
 }
 
-func TestMinIOStoreGetRoundTripThroughObjectClient(t *testing.T) {
+func TestS3StoreGetRoundTripThroughObjectClient(t *testing.T) {
 	t.Parallel()
 
 	data := []byte("snapshot")
 	manifest := validManifest(data)
 	client := &fakeObjectClient{objects: make(map[string][]byte)}
-	store := &MinIOStore{client: client, bucket: "kitsune"}
+	store := &S3Store{client: client, bucket: "kitsune"}
 	if err := store.Put(context.Background(), manifest, data); err != nil {
 		t.Fatalf("put snapshot: %v", err)
 	}
@@ -634,7 +755,7 @@ type fakePut struct {
 	data       []byte
 }
 
-func (c *fakeObjectClient) PutObject(_ context.Context, _ string, objectName string, r io.Reader, _ int64, _ minio.PutObjectOptions) error {
+func (c *fakeObjectClient) PutObject(_ context.Context, _ string, objectName string, r io.Reader, _ int64, _ string) error {
 	if c.err != nil {
 		return c.err
 	}

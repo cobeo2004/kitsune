@@ -16,7 +16,7 @@ The redesigned architecture includes:
 4. **etcd-first metadata manager** with an interface that can support Consul later.
 5. **HashiCorp memberlist** for gossip-based membership and health hints.
 6. **NATS JetStream** for document change event distribution.
-7. **S3 or MinIO** for compressed shard snapshots, backup, restore, and replica bootstrap.
+7. **S3-compatible object storage** for compressed shard snapshots, backup, restore, and replica bootstrap.
 8. **gRPC** for coordinator-to-search-node communication.
 
 The goal is to build a practical distributed search engine that is easier to implement than Elasticsearch-style systems, while still exposing realistic distributed-system concepts: sharding, replication, metadata, event replay, snapshots, health, and recovery.
@@ -43,7 +43,7 @@ This PRD keeps the distributed architecture direction from V2 but replaces the l
 4. `KSMetadataManager` stores authoritative metadata in etcd first.
 5. `KSMemberManager` uses memberlist for gossip membership.
 6. `KSEventBus` uses NATS JetStream for document events.
-7. `KSSnapshotStore` uses S3/MinIO for snapshots.
+7. `KSSnapshotStore` uses S3-compatible object storage for snapshots.
 
 ---
 
@@ -59,9 +59,9 @@ This PRD keeps the distributed architecture direction from V2 but replaces the l
 8. Support direct write APIs through the coordinator and direct event publishing into NATS JetStream.
 9. Use etcd as the first metadata backend while designing `KSMetadataManager` as an interface that can support Consul later.
 10. Use HashiCorp memberlist for node discovery and health gossip.
-11. Use S3 or MinIO for shard snapshots, restore, backup, and replica bootstrap.
+11. Use S3-compatible object storage for shard snapshots, restore, backup, and replica bootstrap.
 12. Keep hot search indexes local on search nodes for low-latency search.
-13. Keep S3/MinIO out of the hot query path.
+13. Keep S3-compatible object storage out of the hot query path.
 14. Provide clear APIs and operational flows that a junior developer can implement step by step.
 
 ---
@@ -81,7 +81,7 @@ ks-node-b
 ks-node-c
 etcd
 nats-jetstream
-minio
+s3-compatible-object-storage
 ```
 
 The coordinator should route search requests to search nodes based on shard metadata.
@@ -176,7 +176,7 @@ As a search node, I want each tablet to manage its own local Bleve index directo
 
 ### User Story 7: Restore a Shard Replica from Snapshot
 
-As an operator, I want a new search node to restore a shard replica from S3/MinIO so that the cluster can recover or add capacity without rebuilding everything from the beginning.
+As an operator, I want a new search node to restore a shard replica from S3-compatible object storage so that the cluster can recover or add capacity without rebuilding everything from the beginning.
 
 **Example flow:**
 
@@ -448,7 +448,7 @@ kitsune.index.<index_name>.shard.<shard_id>.events
 ### 5.12 Snapshot Store
 
 123. The system must define a `KSSnapshotStore` interface.
-124. The first implementation must support S3-compatible storage, including MinIO.
+124. The first implementation must support S3-compatible storage, including local MinIO-compatible development deployments.
 125. The system must support uploading compressed shard snapshots.
 126. The system must support downloading compressed shard snapshots.
 127. Each snapshot must include a manifest file.
@@ -456,7 +456,7 @@ kitsune.index.<index_name>.shard.<shard_id>.events
 129. The system must verify snapshot checksums before restoring.
 130. The system must update the metadata store with the latest snapshot pointer after upload.
 131. The system must use snapshots only for backup, restore, and replica bootstrap.
-132. The system must not use S3/MinIO as the hot search path.
+132. The system must not use S3-compatible object storage as the hot search path.
 
 **Example snapshot layout:**
 
@@ -521,7 +521,7 @@ The following items are explicitly out of scope for this PRD:
 10. Distributed transactions.
 11. Implementing Raft from scratch.
 12. Replicating Bleve index files through Raft logs.
-13. Using S3/MinIO as the hot search query path.
+13. Using S3-compatible object storage as the hot search query path.
 14. Vector search.
 15. Hybrid vector and full-text search.
 16. Advanced relevance tuning UI.
@@ -569,7 +569,7 @@ External services:
   - KSMetadataManager: etcd first, Consul later
   - KSMemberManager: HashiCorp memberlist
   - KSEventBus: NATS JetStream
-  - KSSnapshotStore: S3 / MinIO
+  - KSSnapshotStore: S3-compatible object storage
 ```
 
 ### 7.2 Naming
@@ -585,7 +585,7 @@ Use the following names consistently:
 | KSMetadataManager | Metadata, leases, locks, shard map |
 | KSMemberManager | Gossip membership and health |
 | KSEventBus | NATS JetStream document events |
-| KSSnapshotStore | S3/MinIO snapshot storage |
+| KSSnapshotStore | S3-compatible object storage snapshot storage |
 
 ### 7.3 Developer Experience
 
@@ -594,7 +594,7 @@ The implementation should include a Docker Compose setup for local development:
 ```txt
 etcd
 nats
-minio
+s3-compatible-object-storage
 ks-coordinator
 ks-node-a
 ks-node-b
@@ -617,7 +617,7 @@ nats-io/nats.go        -> NATS JetStream client
 etcd-io/etcd/client/v3 -> etcd client
 hashicorp/memberlist   -> gossip membership
 grpc-go/grpc           -> internal gRPC communication
-minio/minio-go         -> S3-compatible snapshot storage
+aws-sdk-go-v2/service/s3 -> S3-compatible object storage client for snapshots
 ```
 
 ### 8.2 Suggested Project Structure
@@ -692,9 +692,9 @@ Replicas may temporarily differ while replaying events.
 The coordinator should route only to ready replicas.
 ```
 
-### 8.6 S3/MinIO Role
+### 8.6 S3-compatible Object Storage Role
 
-S3/MinIO should be used for:
+S3-compatible object storage should be used for:
 
 ```txt
 backup
@@ -703,7 +703,7 @@ replica bootstrap
 shard migration support later
 ```
 
-S3/MinIO should not be used for:
+S3-compatible object storage should not be used for:
 
 ```txt
 serving live search queries
@@ -723,7 +723,7 @@ storing metadata locks
 6. The coordinator can search across all shards and return merged results.
 7. The coordinator can avoid routing search requests to tablets that are not ready.
 8. Each search node can report tablet health and checkpoint information.
-9. A tablet can create a compressed snapshot and upload it to S3/MinIO.
+9. A tablet can create a compressed snapshot and upload it to S3-compatible object storage.
 10. A new tablet replica can restore from the latest snapshot and replay remaining events.
 11. The system can tolerate one search node being stopped if another healthy replica exists for the affected shards.
 12. Cluster status clearly shows nodes, tablets, shard assignments, and health.
@@ -758,7 +758,7 @@ Start with the smallest working path:
 6. Add multiple search nodes and route by shard map.
 7. Add NATS JetStream document events.
 8. Add replica consumption.
-9. Add S3/MinIO snapshot upload.
+9. Add S3-compatible object storage snapshot upload.
 10. Add snapshot restore and event replay.
 11. Add memberlist gossip health.
 12. Add cluster status and metrics.

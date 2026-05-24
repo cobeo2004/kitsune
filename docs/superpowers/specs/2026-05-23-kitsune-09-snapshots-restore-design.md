@@ -11,12 +11,12 @@ Support manual shard snapshots to S3-compatible storage and restore replicas thr
 
 ## Architecture
 
-`KSSnapshotStore` abstracts object storage. MinIO/S3 is the first backing store. A snapshot contains compressed tablet data and a manifest with identity, generation, mapping version, checkpoint, creation time, and checksum. Restore verifies the snapshot, opens the tablet, replays events after the checkpoint, and only then marks the tablet ready.
+`KSSnapshotStore` abstracts object storage. S3-compatible object storage is the first backing store. A snapshot contains compressed tablet data and a manifest with identity, generation, mapping version, checkpoint, creation time, and checksum. Restore verifies the snapshot, opens the tablet, replays events after the checkpoint, and only then marks the tablet ready.
 
 ## Components
 
 - Snapshot store interface.
-- MinIO/S3 implementation.
+- S3-compatible object storage implementation.
 - Snapshot manifest.
 - Compression/checksum utility.
 - Manual snapshot trigger.
@@ -45,4 +45,4 @@ Implementation must use TDD for:
 
 Future plan path: `docs/superpowers/plans/2026-05-23-kitsune-09-snapshots-restore.md`.
 
-The plan should start with a filesystem fake store, then add MinIO integration coverage.
+The plan should start with a filesystem fake store, then add S3-compatible object-store integration coverage.

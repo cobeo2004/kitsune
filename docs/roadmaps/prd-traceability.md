@@ -46,13 +46,13 @@ Roadmap index: [Kitsune Distributed Search Engine Roadmap](index.md)
 | Internal gRPC services | [02](02-search-node-grpc.md), [03](03-coordinator-rest-static-routing.md) |
 | Metadata backend strategy | [05](05-etcd-metadata-manager.md) |
 | Consistency model | [06](06-nats-events-replay.md), [07](07-replication-replica-selection.md) |
-| S3/MinIO role | [09](09-snapshots-restore.md) |
+| S3-compatible object storage role | [09](09-snapshots-restore.md) |
 | Success metrics | [11](11-docker-compose-local-ops.md), with earlier milestones proving subsets |
 
 ## Documentation Evidence Used
 
-- Context7 documentation was checked for Bleve, NATS Go JetStream, gRPC Go, etcd, HashiCorp memberlist, MinIO Go SDK, and Docker Compose.
-- Best-practice sources were checked for NATS stream retention and consumers, Elastic shard distribution and replicas, etcd API guarantees, gossip membership behavior, Docker Compose startup healthchecks, and MinIO Go SDK usage.
+- Context7 documentation was checked for Bleve, NATS Go JetStream, gRPC Go, etcd, HashiCorp memberlist, S3-compatible object storage clients, and Docker Compose.
+- Best-practice sources were checked for NATS stream retention and consumers, Elastic shard distribution and replicas, etcd API guarantees, gossip membership behavior, Docker Compose startup healthchecks, and S3-compatible object storage usage.
 
 ## Verification Rule
 

@@ -38,17 +38,19 @@ type coordinatorConfig struct {
 	HTTPAddress     string                   `yaml:"httpAddress"`
 	EtcdEndpoints   []string                 `yaml:"etcdEndpoints"`
 	NATSURL         string                   `yaml:"natsURL"`
-	MinIO           minIOConfig              `yaml:"minio"`
+	S3              s3Config                 `yaml:"s3"`
 	DocumentMaxByte int64                    `yaml:"documentMaxBytes"`
 	StaticConfig    coordinator.StaticConfig `yaml:"staticConfig"`
 	Routes          []routeConfig            `yaml:"routes"`
 }
 
-type minIOConfig struct {
+type s3Config struct {
 	Endpoint        string `yaml:"endpoint"`
 	Bucket          string `yaml:"bucket"`
 	AccessKeyID     string `yaml:"accessKey"`
 	SecretAccessKey string `yaml:"secretKey"`
+	SessionToken    string `yaml:"sessionToken"`
+	Region          string `yaml:"region"`
 	Secure          bool   `yaml:"secure"`
 }
 

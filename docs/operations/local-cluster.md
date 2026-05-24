@@ -22,7 +22,7 @@ Expected services:
 - `search-node-c`
 - `etcd`
 - `nats`
-- `minio`
+- `s3` (local S3-compatible object storage)
 
 The app services define the local process topology. The `kitsune` binary exposes `coordinator` and `search-node`
 subcommands that load the YAML files under `deploy/local/config`.
@@ -83,7 +83,9 @@ Runtime knobs live in `deploy/local/config/*.yaml`.
 | Tablet data path | `/data/kitsune` | `search-node-*.yaml`, named volumes |
 | NATS URL | `nats://nats:4222` | `coordinator.yaml`, `search-node-*.yaml` |
 | NATS document stream | `KITSUNE_DOCUMENTS` over `kitsune.index.*.shard.*.events` | coordinator startup and direct smoke |
-| MinIO endpoint | `minio:9000` | `coordinator.yaml` |
-| MinIO bucket | `kitsune-snapshots` | `coordinator.yaml` |
-| MinIO credentials | `minioadmin` / `minioadmin` | `compose.yaml`, `coordinator.yaml` |
-| MinIO data path | `/data` | `compose.yaml` named volume |
+| S3-compatible endpoint | `s3:9000` | `coordinator.yaml` |
+| S3-compatible bucket | `kitsune-snapshots` | `coordinator.yaml` |
+| S3-compatible credentials | `minioadmin` / `minioadmin` | `compose.yaml`, `coordinator.yaml` |
+| S3-compatible region | `us-east-1` | `coordinator.yaml` |
+| S3-compatible session token | unset | `coordinator.yaml` |
+| Local object-storage data path | `/data` | `compose.yaml` named volume |

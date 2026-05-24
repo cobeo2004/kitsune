@@ -11,7 +11,7 @@ Provide a local developer cluster that demonstrates the full MVP path.
 
 ## Architecture
 
-Docker Compose runs the coordinator, at least three search nodes, etcd, NATS JetStream, and MinIO. Healthchecks control startup readiness where dependencies need to be healthy before dependent services start. Scripts or documented commands demonstrate the PRD success metrics end to end.
+Docker Compose runs the coordinator, at least three search nodes, etcd, NATS JetStream, and S3-compatible object storage. Healthchecks control startup readiness where dependencies need to be healthy before dependent services start. Scripts or documented commands demonstrate the PRD success metrics end to end.
 
 ## Components
 
@@ -20,7 +20,7 @@ Docker Compose runs the coordinator, at least three search nodes, etcd, NATS Jet
 - Search node services.
 - etcd service.
 - NATS JetStream service.
-- MinIO service.
+- S3-compatible object storage service for local snapshots.
 - Local config files and knobs.
 - Smoke scripts or documented command sequence.
 

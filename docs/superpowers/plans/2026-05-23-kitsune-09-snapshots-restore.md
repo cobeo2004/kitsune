@@ -4,9 +4,9 @@
 
 **Goal:** Support manual tablet snapshots to S3-compatible storage and restore replicas through snapshot plus event replay.
 
-**Architecture:** Add `internal/snapshot` with a store interface, manifest, checksum utilities, filesystem fake, and MinIO implementation. Restore is a state machine that keeps tablets not ready until snapshot verification and replay finish.
+**Architecture:** Add `internal/snapshot` with a store interface, manifest, checksum utilities, filesystem fake, and S3-compatible object-store implementation. Restore is a state machine that keeps tablets not ready until snapshot verification and replay finish.
 
-**Tech Stack:** Go 1.26.3, `github.com/minio/minio-go/v7`, gzip or tar helpers from the standard library, SHA-256 checksums.
+**Tech Stack:** Go 1.26.3, `github.com/aws/aws-sdk-go-v2/service/s3`, gzip or tar helpers from the standard library, SHA-256 checksums.
 
 ---
 
@@ -19,7 +19,7 @@ Roadmap spec: [../../roadmaps/09-snapshots-restore.md](../../roadmaps/09-snapsho
 - Create: `internal/snapshot/checksum.go` for SHA-256 helpers.
 - Create: `internal/snapshot/store.go` for store interface.
 - Create: `internal/snapshot/filesystem.go` for tests.
-- Create: `internal/snapshot/minio.go` for S3-compatible store.
+- Create: `internal/snapshot/s3.go` for S3-compatible store.
 - Create: `internal/snapshot/restore.go` for restore flow.
 - Create: `internal/snapshot/snapshot_test.go` for behavior tests.
 
@@ -171,7 +171,7 @@ Expected: PASS.
 git add internal/snapshot
 git commit -m "Add snapshot store contract
 
-Constraint: Snapshot storage must support MinIO through a narrow interface.
+Constraint: Snapshot storage must support S3-compatible object storage through a narrow interface.
 Confidence: high
 Scope-risk: narrow
 Tested: go test ./internal/snapshot -run TestFilesystemStoreRoundTrip -count=1"
@@ -223,11 +223,11 @@ Run: `go test ./internal/snapshot -run TestRestoreRejectsChecksumMismatch -count
 
 Expected: PASS.
 
-- [ ] **Step 5: Add MinIO dependency and skeleton**
+- [ ] **Step 5: Add S3-compatible client dependency and skeleton**
 
-Run: `go get github.com/minio/minio-go/v7`
+Run: `go get github.com/aws/aws-sdk-go-v2/config github.com/aws/aws-sdk-go-v2/credentials github.com/aws/aws-sdk-go-v2/service/s3 github.com/aws/smithy-go`
 
-Create `MinIOStore` with `PutObject`, `GetObject`, and `StatObject` usage behind the `Store` interface.
+Create `S3Store` with `PutObject`, `GetObject`, and `StatObject` usage behind the `Store` interface.
 
 - [ ] **Step 6: Commit**
 

@@ -2,11 +2,12 @@ httpAddress: ":8080"
 etcdEndpoints:
   - "http://etcd:2379"
 natsURL: "nats://nats:4222"
-minio:
-  endpoint: "minio:9000"
+s3:
+  endpoint: "s3:9000"
   bucket: "kitsune-snapshots"
   accessKey: "minioadmin"
   secretKey: "minioadmin"
+  region: "us-east-1"
   secure: false
 documentMaxBytes: 1048576
 staticConfig:

@@ -1,5 +1,7 @@
 # Kitsune
 
+![Kitsune logo](docs/assets/kitsune-logo.png)
+
 Kitsune is a Go distributed search engine built around Bleve shard replicas. The project is being implemented from the product roadmap in `docs/roadmaps` and the milestone plans in `docs/superpowers/plans`.
 
 ![Kitsune distributed search architecture](docs/prd/assets/distribuited_search_engine_architecture_diagram.png)
@@ -15,7 +17,7 @@ Core components:
 - `KSCoordinator`: REST entrypoint for index management, document writes, search, and cluster status.
 - `KSMetadataManager`: etcd-first metadata interface for indexes, routes, tablet state, checkpoints, and snapshot pointers.
 - `KSEventBus`: NATS JetStream document events for eventually consistent indexing.
-- `KSSnapshotStore`: S3/MinIO-compatible storage for shard snapshots and replica bootstrap.
+- `KSSnapshotStore`: S3-compatible storage for shard snapshots and replica bootstrap.
 
 ## Current Implementation
 

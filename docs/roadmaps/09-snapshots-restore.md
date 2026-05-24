@@ -12,7 +12,7 @@ Support manual shard snapshots to S3-compatible storage and restore replicas thr
 ## Scope
 
 - `KSSnapshotStore` interface.
-- MinIO/S3-compatible upload and download.
+- S3-compatible upload and download.
 - Compressed shard snapshot artifacts.
 - Snapshot manifest with index name, shard ID, replica source node, generation, mapping version, last applied event ID, creation time, and checksum.
 - Checksum validation before restore.
@@ -22,7 +22,7 @@ Support manual shard snapshots to S3-compatible storage and restore replicas thr
 ## Out of Scope
 
 - Time-based snapshot scheduling.
-- Hot query path through S3/MinIO.
+- Hot query path through S3-compatible object storage.
 - Fully automatic recovery orchestration.
 
 ## Acceptance Criteria
@@ -50,5 +50,5 @@ Use architect for recovery state design. Use verifier for failure and checksum c
 
 - Snapshot manifest tests.
 - Restore tests using local filesystem fake store.
-- MinIO integration smoke test.
+- S3-compatible object-store integration smoke test.
 - Manual recovery workflow test.

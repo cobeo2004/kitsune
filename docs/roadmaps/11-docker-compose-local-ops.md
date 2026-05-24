@@ -11,7 +11,7 @@ Provide a local developer cluster that demonstrates the full MVP path.
 
 ## Scope
 
-- Docker Compose environment with coordinator, at least three search nodes, etcd, NATS JetStream, and MinIO.
+- Docker Compose environment with coordinator, at least three search nodes, etcd, NATS JetStream, and S3-compatible object storage.
 - Healthchecks and startup ordering for service dependencies.
 - Example static or metadata-backed cluster configuration.
 - Developer commands for create index, upsert, direct event publish, search, snapshot, restore, node stop, and cluster status.
@@ -33,7 +33,7 @@ Provide a local developer cluster that demonstrates the full MVP path.
 - Search nodes consume events and update local Bleve indexes.
 - Coordinator searches across shards and returns merged results.
 - Coordinator avoids not-ready tablets.
-- A tablet can snapshot to MinIO and restore plus replay.
+- A tablet can snapshot to S3-compatible object storage and restore plus replay.
 - The system tolerates one stopped search node when another healthy replica exists.
 - Cluster status shows nodes, tablets, shard assignments, and health.
 

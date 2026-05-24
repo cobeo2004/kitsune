@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Provide a Docker Compose local cluster that demonstrates the full MVP path with coordinator, three search nodes, etcd, NATS JetStream, and MinIO.
+**Goal:** Provide a Docker Compose local cluster that demonstrates the full MVP path with coordinator, three search nodes, etcd, NATS JetStream, and S3-compatible object storage.
 
 **Architecture:** Add Compose infrastructure and smoke scripts after application milestones are implemented. Healthchecks gate dependent service startup. Scripts exercise create-index, write, direct event publish, search, snapshot, restore, node-stop, and status flows.
 
-**Tech Stack:** Docker Compose, Go binaries from this repository, etcd, NATS JetStream, MinIO, Go smoke programs.
+**Tech Stack:** Docker Compose, Go binaries from this repository, etcd, NATS JetStream, S3-compatible object storage, Go smoke programs.
 
 ---
 
@@ -41,7 +41,7 @@ Run:
 docker compose -f deploy/local/compose.yaml config
 ```
 
-Expected: Compose validates coordinator, three search nodes, etcd, nats, and minio services.
+Expected: Compose validates coordinator, three search nodes, etcd, NATS, and S3-compatible object storage services.
 ```
 
 - [ ] **Step 2: Run validation to verify it fails**
@@ -66,7 +66,7 @@ services:
     ports:
       - "4222:4222"
 
-  minio:
+  s3:
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -83,7 +83,7 @@ services:
     depends_on:
       - etcd
       - nats
-      - minio
+      - s3
     volumes:
       - ./config:/config:ro
     ports:
@@ -96,7 +96,7 @@ services:
     depends_on:
       - etcd
       - nats
-      - minio
+      - s3
     volumes:
       - ./config:/config:ro
 
@@ -107,7 +107,7 @@ services:
     depends_on:
       - etcd
       - nats
-      - minio
+      - s3
     volumes:
       - ./config:/config:ro
 
@@ -118,7 +118,7 @@ services:
     depends_on:
       - etcd
       - nats
-      - minio
+      - s3
     volumes:
       - ./config:/config:ro
 ```
@@ -135,7 +135,7 @@ Expected: PASS and prints normalized Compose config.
 git add deploy/local/compose.yaml docs/operations/local-cluster.md
 git commit -m "Define local Compose cluster skeleton
 
-Constraint: Local ops must run a coordinator, three search nodes, etcd, NATS, and MinIO.
+Constraint: Local ops must run a coordinator, three search nodes, etcd, NATS, and S3-compatible object storage.
 Confidence: medium
 Scope-risk: moderate
 Tested: docker compose -f deploy/local/compose.yaml config"
@@ -156,10 +156,12 @@ httpAddress: ":8080"
 etcdEndpoints:
   - "http://etcd:2379"
 natsURL: "nats://nats:4222"
-minio:
-  endpoint: "minio:9000"
+s3:
+  endpoint: "s3:9000"
+  bucket: "kitsune-snapshots"
   accessKey: "minioadmin"
   secretKey: "minioadmin"
+  region: "us-east-1"
   secure: false
 documentMaxBytes: 1048576
 ```

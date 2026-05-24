@@ -33,9 +33,9 @@ Traceability matrix: [PRD Traceability](prd-traceability.md)
 | 06 | NATS events and replay | [06 NATS Events Replay](06-nats-events-replay.md) | Writes flow through durable JetStream events and tablets replay from checkpoints. |
 | 07 | Replication and replica selection | [07 Replication Replica Selection](07-replication-replica-selection.md) | Shards can have multiple replicas, and coordinator search avoids unavailable replicas. |
 | 08 | Tombstones and compaction | [08 Tombstones Compaction](08-tombstones-compaction.md) | Delete tombstones are durable and compaction is defined/testable. |
-| 09 | Snapshots and restore | [09 Snapshots Restore](09-snapshots-restore.md) | Tablets can snapshot to S3/MinIO and restore with event replay. |
+| 09 | Snapshots and restore | [09 Snapshots Restore](09-snapshots-restore.md) | Tablets can snapshot to S3-compatible object storage and restore with event replay. |
 | 10 | memberlist health and cluster status | [10 Memberlist Health Cluster Status](10-memberlist-health-cluster-status.md) | Gossip provides advisory health and cluster status reports node/tablet state. |
-| 11 | Docker Compose local cluster and ops | [11 Docker Compose Local Ops](11-docker-compose-local-ops.md) | A local three-node cluster runs with etcd, NATS, MinIO, coordinator, and search nodes. |
+| 11 | Docker Compose local cluster and ops | [11 Docker Compose Local Ops](11-docker-compose-local-ops.md) | A local three-node cluster runs with etcd, NATS, S3-compatible object storage, coordinator, and search nodes. |
 
 ## Later Roadmap Items
 

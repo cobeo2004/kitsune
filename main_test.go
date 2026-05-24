@@ -36,6 +36,24 @@ func TestLoadCoordinatorConfig(t *testing.T) {
 	}
 }
 
+func TestLoadCoordinatorS3Config(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "coordinator.yaml")
+	err := os.WriteFile(path, []byte("s3:\n  bucket: kitsune\n  region: ap-southeast-2\n  sessionToken: token\n"), 0o600)
+	if err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	var cfg coordinatorConfig
+	if err := loadYAML(path, &cfg); err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.S3.Bucket != "kitsune" || cfg.S3.Region != "ap-southeast-2" || cfg.S3.SessionToken != "token" {
+		t.Fatalf("s3 config = %#v", cfg.S3)
+	}
+}
+
 func TestLoadSearchNodeConfig(t *testing.T) {
 	t.Parallel()
 
@@ -97,8 +115,8 @@ func TestLocalDeployConfigsLoad(t *testing.T) {
 	if len(coordinatorCfg.Routes) != 6 {
 		t.Fatalf("routes = %d, want 6", len(coordinatorCfg.Routes))
 	}
-	if coordinatorCfg.MinIO.Endpoint != "minio:9000" || coordinatorCfg.MinIO.Bucket == "" {
-		t.Fatalf("minio config = %#v, want endpoint and bucket", coordinatorCfg.MinIO)
+	if coordinatorCfg.S3.Endpoint != "s3:9000" || coordinatorCfg.S3.Bucket == "" {
+		t.Fatalf("s3 config = %#v, want endpoint and bucket", coordinatorCfg.S3)
 	}
 	if err := coordinator.ValidateStaticConfig(coordinatorCfg.StaticConfig); err != nil {
 		t.Fatalf("validate static config: %v", err)
@@ -126,7 +144,7 @@ func TestLocalDeployTopologyMatchesCompose(t *testing.T) {
 		t.Fatalf("load compose: %v", err)
 	}
 
-	wantServices := []string{"coordinator", "etcd", "minio", "nats", "search-node-a", "search-node-b", "search-node-c"}
+	wantServices := []string{"coordinator", "etcd", "nats", "s3", "search-node-a", "search-node-b", "search-node-c"}
 	for _, service := range wantServices {
 		if _, ok := compose.Services[service]; !ok {
 			t.Fatalf("compose missing service %q", service)
@@ -141,7 +159,7 @@ func TestLocalDeployTopologyMatchesCompose(t *testing.T) {
 	if coordinatorService.Build["context"] != "../.." {
 		t.Fatalf("coordinator build context = %q, want ../..", coordinatorService.Build["context"])
 	}
-	assertServiceDependsHealthy(t, coordinatorService, "etcd", "nats", "minio")
+	assertServiceDependsHealthy(t, coordinatorService, "etcd", "nats", "s3")
 	if !slices.Contains(coordinatorService.Ports, "8080:8080") {
 		t.Fatalf("coordinator ports = %v, want 8080:8080", coordinatorService.Ports)
 	}
@@ -159,7 +177,7 @@ func TestLocalDeployTopologyMatchesCompose(t *testing.T) {
 		if serviceCfg.Build["context"] != "../.." {
 			t.Fatalf("%s build context = %q, want ../..", service, serviceCfg.Build["context"])
 		}
-		assertServiceDependsHealthy(t, serviceCfg, "etcd", "nats", "minio")
+		assertServiceDependsHealthy(t, serviceCfg, "etcd", "nats", "s3")
 		var nodeCfg searchNodeConfig
 		if err := loadYAML(composeConfigPath(configPath), &nodeCfg); err != nil {
 			t.Fatalf("load %s config: %v", service, err)

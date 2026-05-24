@@ -34,7 +34,7 @@ services:
       timeout: 3s
       retries: 12
 
-  minio:
+  s3:
     image: minio/minio:latest
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -44,7 +44,7 @@ services:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - minio-data:/data
+      - s3-data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
       interval: 5s
@@ -60,7 +60,7 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
     volumes:
       - ./config:/config:ro
@@ -76,7 +76,7 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
     volumes:
       - ./config:/config:ro
@@ -91,7 +91,7 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
     volumes:
       - ./config:/config:ro
@@ -106,7 +106,7 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
-      minio:
+      s3:
         condition: service_healthy
     volumes:
       - ./config:/config:ro
@@ -115,7 +115,7 @@ services:
 volumes:
   etcd-data:
   nats-data:
-  minio-data:
+  s3-data:
   search-node-a-data:
   search-node-b-data:
   search-node-c-data:

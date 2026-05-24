@@ -13,7 +13,7 @@ This project is **Kitsune**, a Go distributed search engine built on **Bleve** f
 1. **Read the PRD section before writing code in a new area.** Each functional requirement is numbered (§5.1–§5.15); cite the requirement number(s) in commit messages when implementing a specific behavior.
 2. **Stay on the MVP path.** The implementation order in PRD §11 is canonical. Do not introduce failover, rebalancing, multi-region, or custom search internals — they are explicitly out of scope (PRD §6).
 3. **Respect service boundaries.** `KSCoordinator` never touches Bleve files. `KSMemberManager` gossip is advisory only. `KSSnapshotStore` is never on the hot query path. See CLAUDE.md "Architecture rules" for the full list.
-4. **Interfaces before implementations.** `KSMetadataManager` and `KSSnapshotStore` are defined as interfaces; the first impls are etcd and S3/MinIO. Do not leak backend-specific types into callers (PRD §5.10, §5.12, §8.4).
+4. **Interfaces before implementations.** `KSMetadataManager` and `KSSnapshotStore` are defined as interfaces; the first impls are etcd and S3-compatible object storage. Do not leak backend-specific types into callers (PRD §5.10, §5.12, §8.4).
 5. **Do not invent answers to open questions.** PRD §10 lists ten unresolved design questions (sharding strategy, REST vs gRPC scope, JetStream retention, snapshot trigger policy, delete semantics, etc.). If a task depends on one of these, surface the question to the user before coding around it.
 
 ## Subagent dispatch
